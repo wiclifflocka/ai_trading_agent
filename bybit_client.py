@@ -1,116 +1,203 @@
-# bybit_client.py
+"""
+Bybit API Client for Spot and Derivatives Trading
 
-import requests
-import json
-import time
-import hashlib
-import hmac
-from urllib.parse import urlencode
+Handles authenticated requests to Bybit's API using the official pybit library.
+Configured for testnet/demo accounts by default.
 
+Features:
+- Account balance checks
+- Order placement (limit/market)
+- Market price data
+- Historical kline data
+- Position management
+
+Requirements:
+- pybit library (install with `pip install pybit`)
+- Valid Bybit testnet API keys (from https://testnet.bybit.com)
+"""
+
+from pybit.unified_trading import HTTP
 
 class BybitClient:
-    def __init__(self, api_key, api_secret, base_url="https://api.bybit.com"):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.base_url = base_url
+    """
+    Bybit API client for trading operations
+    
+    Args:
+        api_key (str): Bybit API key
+        api_secret (str): Bybit API secret
+        testnet (bool): True for demo account, False for live trading
+    """
+    
+    def __init__(self, api_key: str, api_secret: str, testnet: bool = True):
+        self.client = HTTP(
+            testnet=testnet,
+            api_key=api_key,
+            api_secret=api_secret,
+            # Optional: Enable request logging
+            # enable_time_sync=True,
+            # request_timeout=10  
+        )
 
-    # Function to create the signature for the request
-    def _create_signature(self, params):
-        query_string = urlencode(sorted(params.items()))
-        return hmac.new(self.api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
-
-    # Function to make an authenticated GET request
-    def _send_get_request(self, endpoint, params=None):
-        if params is None:
-            params = {}
-
-        params['api_key'] = self.api_key
-        params['timestamp'] = str(int(time.time() * 1000))
-        params['sign'] = self._create_signature(params)
-
-        response = requests.get(self.base_url + endpoint, params=params)
-        return response.json()
-
-    # Function to make an authenticated POST request
-    def _send_post_request(self, endpoint, params=None):
-        if params is None:
-            params = {}
-
-        params['api_key'] = self.api_key
-        params['timestamp'] = str(int(time.time() * 1000))
-        params['sign'] = self._create_signature(params)
-
-        response = requests.post(self.base_url + endpoint, data=params)
-        return response.json()
-
-    # Function to retrieve account balance
-    def get_balance(self):
-        endpoint = "/v2/private/wallet/balance"
-        params = {}
-        response = self._send_get_request(endpoint, params)
-        if response.get('ret_code') == 0:
-            balance_data = response.get('result', {}).get('total', {})
-            return float(balance_data.get('equity', 0))
-        else:
-            raise Exception(f"Error retrieving balance: {response.get('ret_msg')}")
-
-    # Function to place a limit order
-    def place_order(self, symbol, qty, side, order_type="Limit", price=None, time_in_force="GoodTillCancel"):
-        endpoint = "/v2/private/order/create"
-        params = {
-            "symbol": symbol,
-            "order_type": order_type,
-            "qty": qty,
-            "side": side,
-            "time_in_force": time_in_force
-        }
-
-        if price:
-            params["price"] = price
+    def get_balance(self, coin: str = 'USDT') -> float:
+        """
+        Get total equity balance for a specific coin
         
-        response = self._send_post_request(endpoint, params)
-        return response
+        Args:
+            coin (str): Currency to check (default: USDT)
+            
+        Returns:
+            float: Total equity in specified coin
+            
+        Raises:
+            Exception: On API error or missing data
+        """
+        try:
+            response = self.client.get_wallet_balance(
+                accountType="UNIFIED",  # Unified account mode
+                coin=coin
+            )
+            # Extract balance from nested response structure
+            balance_list = response['result']['list']
+            if not balance_list:
+                raise Exception("No balance data found")
+                
+            return float(balance_list[0]['coin'][0]['equity'])
+            
+        except Exception as e:
+            raise Exception(f"Balance check failed: {str(e)}")
 
-    # Function to get market price
-    def get_market_price(self, symbol):
-        endpoint = f"/v2/public/tickers"
-        params = {"symbol": symbol}
-        response = self._send_get_request(endpoint, params)
-        if response.get('ret_code') == 0:
-            return float(response.get('result', [{}])[0].get('last_price', 0))
-        else:
-            raise Exception(f"Error retrieving market price: {response.get('ret_msg')}")
+    def place_order(
+        self,
+        symbol: str,
+        side: str,
+        qty: float,
+        order_type: str = "Limit",
+        price: float = None,
+        time_in_force: str = "GTC"
+    ) -> dict:
+        """
+        Place a new spot market order
+        
+        Args:
+            symbol (str): Trading pair (e.g., 'BTCUSDT')
+            side (str): 'Buy' or 'Sell'
+            qty (float): Order quantity
+            order_type (str): 'Limit' or 'Market'
+            price (float): Required for limit orders
+            time_in_force (str): Order lifetime (GTC, IOC, FOK)
+            
+        Returns:
+            dict: Order response from Bybit
+            
+        Raises:
+            Exception: On placement failure
+        """
+        try:
+            return self.client.place_order(
+                category="spot",
+                symbol=symbol,
+                side=side,
+                orderType=order_type,
+                qty=str(qty),  # Bybit requires string quantities
+                price=str(price) if price else None,
+                timeInForce=time_in_force
+            )
+        except Exception as e:
+            raise Exception(f"Order failed: {str(e)}")
 
-    # Function to get order book data
-    def get_order_book(self, symbol):
-        endpoint = f"/v2/public/orderBook/L2"
-        params = {"symbol": symbol}
-        response = self._send_get_request(endpoint, params)
-        if response.get('ret_code') == 0:
-            return response.get('result', [])
-        else:
-            raise Exception(f"Error retrieving order book: {response.get('ret_msg')}")
+    def get_market_price(self, symbol: str) -> float:
+        """
+        Get latest market price for a symbol
+        
+        Args:
+            symbol (str): Trading pair (e.g., 'BTCUSDT')
+            
+        Returns:
+            float: Last traded price
+            
+        Raises:
+            Exception: On data retrieval failure
+        """
+        try:
+            response = self.client.get_tickers(
+                category="spot",
+                symbol=symbol
+            )
+            return float(response['result']['list'][0]['lastPrice'])
+        except Exception as e:
+            raise Exception(f"Price check failed: {str(e)}")
 
-    # Function to get market data (candlestick data)
-    def get_market_data(self, symbol, interval="1", limit=200):
-        endpoint = "/v2/public/kline/list"
-        params = {
-            "symbol": symbol,
-            "interval": interval,
-            "limit": limit
-        }
-        response = self._send_get_request(endpoint, params)
-        if response.get('ret_code') == 0:
-            return response.get('result', [])
-        else:
-            raise Exception(f"Error retrieving market data: {response.get('ret_msg')}")
+    def get_historical_data(
+        self,
+        symbol: str,
+        interval: int = 15,
+        limit: int = 200
+    ) -> list:
+        """
+        Get historical kline/candlestick data
+        
+        Args:
+            symbol (str): Trading pair
+            interval (int): Minutes per candle (1, 3, 5, 15, 30, 60, 120, 240, 360, 720)
+            limit (int): Number of candles to retrieve (max 1000)
+            
+        Returns:
+            list: Array of kline data in [timestamp, open, high, low, close, volume] format
+        """
+        try:
+            response = self.client.get_kline(
+                category="spot",
+                symbol=symbol,
+                interval=str(interval),
+                limit=limit
+            )
+            return [
+                [float(item[1]), float(item[2]), float(item[3]), 
+                float(item[4]), float(item[5]), float(item[6])
+                ] for item in response['result']['list']
+            ]
+        except Exception as e:
+            raise Exception(f"Historical data failed: {str(e)}")
 
-    # Function to close a position
-    def close_position(self, symbol):
-        endpoint = "/v2/private/position/close"
-        params = {
-            "symbol": symbol
-        }
-        response = self._send_post_request(endpoint, params)
-        return response
+    def close_all_positions(self, symbol: str) -> dict:
+        """
+        Close all open positions for a symbol (spot and derivatives)
+        
+        Args:
+            symbol (str): Trading pair to close
+            
+        Returns:
+            dict: API response
+            
+        Raises:
+            Exception: On closure failure
+        """
+        try:
+            # Close spot positions
+            self.client.cancel_all_orders(category="spot", symbol=symbol)
+            
+            # Close derivatives positions
+            return self.client.close_position(
+                category="linear",
+                symbol=symbol,
+                positionIdx=0,  # Single-way position
+                settleCoin="USDT"
+            )
+        except Exception as e:
+            raise Exception(f"Position closure failed: {str(e)}")
 
+# Example Usage
+if __name__ == "__main__":
+    # Initialize with testnet keys
+    client = BybitClient(
+        api_key="05EqRWk80CvjiSto64",
+        api_secret="6OhCdDGX7JQGePrqWd5Axl2q7k5SPNccprtH",
+        testnet=True
+    )
+
+    # Get current BTC price
+    try:
+        btc_price = client.get_market_price("BTCUSDT")
+        print(f"Current BTC Price: ${btc_price:,.2f}")
+    except Exception as e:
+        print(f"Error: {str(e)}")

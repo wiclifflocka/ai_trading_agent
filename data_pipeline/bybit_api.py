@@ -1,53 +1,108 @@
-import requests
 import time
-import json
-from bybit import bybit
+from pybit.unified_trading import HTTP
+import logging
 
-# Configuration for API keys (store securely in environment variables for production)
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
 API_KEY = "your_api_key"
 API_SECRET = "your_api_secret"
+BASE_URL = "https://api-testnet.bybit.com"  # Use testnet for demo
 
-# Bybit API Client
-client = bybit(test=True, api_key=API_KEY, api_secret=API_SECRET)  # Use testnet=True for sandbox testing
-
+# Initialize the API client
 class BybitAPI:
-    """
-    Handles API requests to fetch market data from Bybit.
-    """
+    def __init__(self, api_key=None, api_secret=None, testnet=True):
+        self.client = HTTP(
+            testnet=testnet,
+            api_key=api_key,
+            api_secret=api_secret
+        )
 
-    def __init__(self):
-        self.client = client
-
-    def get_order_book(self, symbol="BTCUSDT", depth=50):
-        """
-        Fetch the order book for a given trading pair.
-        :param symbol: Trading pair (e.g., "BTCUSDT")
-        :param depth: Number of order levels to fetch
-        :return: Order book data (bids and asks)
-        """
+    def get_btc_price(self):
         try:
-            response = self.client.Market.Market_orderbook(symbol=symbol).result()
-            return response[0]['result']
+            response = self.client.latest_information_for_symbol(symbol="BTCUSDT")
+            price = float(response["result"][0]["last_price"])
+            logging.info(f"BTC Price: {price}")
+            return price
         except Exception as e:
-            print(f"Error fetching order book: {e}")
+            logging.error(f"Error fetching BTC price: {e}")
             return None
 
-    def get_recent_trades(self, symbol="BTCUSDT"):
-        """
-        Fetch recent market trades for a given trading pair.
-        :param symbol: Trading pair (e.g., "BTCUSDT")
-        :return: List of recent trades
-        """
+    def get_recent_trades(self, symbol):
         try:
-            response = self.client.Market.Market_tradingRecords(symbol=symbol).result()
-            return response[0]['result']
+            response = self.client.recent_trading_records(symbol=symbol)
+            return response["result"]
         except Exception as e:
-            print(f"Error fetching recent trades: {e}")
-            return None
+            logging.error(f"Error fetching recent trades for {symbol}: {e}")
+            return []
 
-# Example usage
+    def get_open_positions(self, symbol):
+        try:
+            positions = self.client.my_position(symbol=symbol)
+            return positions["result"]
+        except Exception as e:
+            logging.error(f"Error fetching positions for {symbol}: {e}")
+            return []
+
+    def close_position(self, symbol):
+        positions = self.get_open_positions(symbol)
+        
+        # Find position for given symbol
+        position = next((p for p in positions if p["symbol"] == symbol), None)
+        
+        if position and float(position["size"]) > 0:
+            try:
+                close_order = self.client.place_active_order(
+                    category="linear",
+                    symbol=symbol,
+                    side="Sell",  # Close the position by selling
+                    order_type="Market",
+                    qty=str(position["size"]),  # Close the whole position
+                    reduce_only=True  # Ensure it reduces the position only
+                )
+                logging.info(f"Close Position Response: {close_order}")
+            except Exception as e:
+                logging.error(f"Error closing position for {symbol}: {e}")
+        else:
+            logging.info(f"No open position to close for {symbol}")
+        
+    def place_order(self, symbol, side, qty):
+        try:
+            response = self.client.place_active_order(
+                category="linear",
+                symbol=symbol,
+                side=side,
+                order_type="Market",
+                qty=str(qty),
+            )
+            logging.info(f"Order placed successfully: {response}")
+        except Exception as e:
+            logging.error(f"Error placing order for {symbol}: {e}")
+            
+def main():
+    bybit_api = BybitAPI(API_KEY, API_SECRET)
+
+    # Get BTC price
+    price = bybit_api.get_btc_price()
+    if price:
+        logging.info(f"BTC price: {price}")
+    else:
+        logging.error("Failed to fetch BTC price.")
+    
+    # Get recent trades for BTCUSDT
+    trades = bybit_api.get_recent_trades("BTCUSDT")
+    logging.info(f"Recent Trades: {trades}")
+    
+    # Example: Place a buy order if no position
+    if not trades:
+        bybit_api.place_order("BTCUSDT", "Buy", 0.01)  # Adjust qty based on your needs
+
+    # Example: Close position for BTCUSDT
+    bybit_api.close_position("BTCUSDT")
+    
+    # Wait for a while before running the next cycle
+    time.sleep(10)
+
 if __name__ == "__main__":
-    api = BybitAPI()
-    order_book = api.get_order_book()
-    print(json.dumps(order_book, indent=4))  # Pretty-print the order book data
+    main()
 

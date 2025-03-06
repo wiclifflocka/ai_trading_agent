@@ -1,34 +1,53 @@
-import numpy as np
-import pandas as pd
+import time
 from data_pipeline.bybit_api import BybitAPI
 
-api = BybitAPI()
+class StopHuntDetector:
+    def __init__(self, api: BybitAPI, symbol: str = "BTCUSDT", lookback_period: int = 60):
+        """
+        Initialize the StopHuntDetector with a BybitAPI instance, trading symbol, and lookback period.
 
-def detect_stop_hunt_zones(symbol="BTCUSDT"):
-    """
-    Identifies stop-loss hunting zones where price is likely to be manipulated.
-    :param symbol: Trading pair
-    :return: Stop-hunt levels
-    """
-    data = api.get_order_book(symbol)
+        Args:
+            api (BybitAPI): Instance of BybitAPI for fetching market data.
+            symbol (str): Trading pair (e.g., "BTCUSDT"). Defaults to "BTCUSDT".
+            lookback_period (int): Number of seconds to look back for price movements. Defaults to 60.
+        """
+        self.api = api
+        self.symbol = symbol
+        self.lookback_period = lookback_period
 
-    if not data:
-        return None
+    def detect_stop_hunts(self, threshold: float = 0.005) -> bool:
+        """
+        Detects potential stop hunts by checking for rapid price movements beyond a threshold.
 
-    bids = sorted(data['bids'], key=lambda x: x[0], reverse=True)[:5]
-    asks = sorted(data['asks'], key=lambda x: x[0])[:5]
+        Args:
+            threshold (float): Percentage price change threshold to consider a stop hunt. Defaults to 0.5%.
 
-    bid_sizes = np.array([b[1] for b in bids])
-    ask_sizes = np.array([a[1] for a in asks])
+        Returns:
+            bool: True if a stop hunt is detected, False otherwise.
+        """
+        # Fetch recent price data (e.g., last 2 one-minute candles)
+        recent_data = self.api.get_recent_price_data(self.symbol, interval="1m", limit=2)
+        if not recent_data or len(recent_data) < 2:
+            print(f"Failed to fetch price data for {self.symbol}")
+            return False
 
-    # Large liquidity clusters indicate stop-loss levels
-    large_bid_zone = bids[np.argmax(bid_sizes)][0]
-    large_ask_zone = asks[np.argmax(ask_sizes)][0]
+        # Extract closing prices from the two most recent candles
+        prev_close = float(recent_data[0]['close'])
+        current_close = float(recent_data[1]['close'])
 
-    print(f"Potential Stop-Hunt Levels: Buy Stops at {large_ask_zone}, Sell Stops at {large_bid_zone}")
-    return large_ask_zone, large_bid_zone
+        # Calculate percentage price change
+        price_change = (current_close - prev_close) / prev_close
+
+        # Check if the absolute price change exceeds the threshold
+        if abs(price_change) > threshold:
+            print(f"Potential stop hunt detected: {price_change*100:.2f}% change")
+            return True
+        else:
+            print(f"No stop hunt detected: {price_change*100:.2f}% change")
+            return False
 
 # Example usage
 if __name__ == "__main__":
-    detect_stop_hunt_zones()
-
+    api = BybitAPI()  # Initialize API
+    detector = StopHuntDetector(api)  # Create instance
+    detector.detect_stop_hunts()  # Detect stop hunts

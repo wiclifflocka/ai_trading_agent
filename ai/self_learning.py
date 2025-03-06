@@ -6,7 +6,7 @@ from data_pipeline.bybit_api import BybitAPI
 
 api = BybitAPI()
 
-class AITrader:
+class SelfLearning:
     def __init__(self):
         """
         Initializes AI trading agent with an LSTM-based reinforcement learning model.
@@ -18,7 +18,7 @@ class AITrader:
         Creates an LSTM-based deep learning model for market prediction.
         """
         model = Sequential([
-            LSTM(64, return_sequences=True, input_shape=(10, 5)),  
+            LSTM(64, return_sequences=True, input_shape=(10, 5)),
             LSTM(32),
             Dense(1, activation="linear")
         ])
@@ -49,7 +49,6 @@ class AITrader:
         return np.array(X), np.array(y)
 
 if __name__ == "__main__":
-    ai_trader = AITrader()
+    self_learning = SelfLearning()
     historical_data = api.get_historical_data("BTCUSDT")
-    ai_trader.train(historical_data)
-
+    self_learning.train(historical_data)

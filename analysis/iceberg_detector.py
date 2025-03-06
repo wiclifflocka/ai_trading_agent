@@ -1,42 +1,62 @@
-import numpy as np
-import pandas as pd
-from data_pipeline.bybit_api import BybitAPI
 import time
+from data_pipeline.bybit_api import BybitAPI
 
-api = BybitAPI()
+class IcebergDetector:
+    def __init__(self, api: BybitAPI, symbol: str = "BTCUSDT"):
+        """
+        Initialize the IcebergDetector with a BybitAPI instance and trading symbol.
 
-def detect_iceberg_orders(symbol="BTCUSDT", refresh_threshold=3):
-    """
-    Detects iceberg orders by identifying repetitive refreshes at the same price level.
-    :param symbol: Trading pair
-    :param refresh_threshold: Number of times an order at the same price level refreshes
-    :return: Iceberg detection result
-    """
-    iceberg_data = {}
+        Args:
+            api (BybitAPI): Instance of BybitAPI for fetching order book data.
+            symbol (str): Trading pair (e.g., "BTCUSDT"). Defaults to "BTCUSDT".
+        """
+        self.api = api
+        self.symbol = symbol
 
-    for _ in range(10):  # Check for iceberg behavior over 10 cycles
-        data = api.get_order_book(symbol)
-        if not data:
-            continue
+    def detect_iceberg_orders(self, cycles: int = 10, refresh_threshold: int = 3) -> list:
+        """
+        Detects iceberg orders by identifying repetitive refreshes at the same price level.
 
-        bids = sorted(data['bids'], key=lambda x: x[0], reverse=True)[:5]
-        asks = sorted(data['asks'], key=lambda x: x[0])[:5]
+        Args:
+            cycles (int): Number of times to check the order book. Defaults to 10.
+            refresh_threshold (int): Minimum number of refreshes at the same price level to consider it an iceberg. Defaults to 3.
 
-        for level in bids + asks:
-            price, size = level
-            if price in iceberg_data:
-                iceberg_data[price].append(size)
-            else:
-                iceberg_data[price] = [size]
+        Returns:
+            list: List of prices where iceberg orders are detected.
+        """
+        iceberg_data = {}
 
-        time.sleep(1)  # Short delay before next cycle
+        for _ in range(cycles):
+            data = self.api.get_order_book(self.symbol)
+            if not data or 'bids' not in data or 'asks' not in data:
+                print(f"Failed to fetch order book data for {self.symbol}")
+                continue
 
-    detected_icebergs = [price for price, sizes in iceberg_data.items() if len(set(sizes)) >= refresh_threshold]
+            # Get top 5 bids and asks
+            bids = sorted(data['bids'], key=lambda x: float(x[0]), reverse=True)[:5]
+            asks = sorted(data['asks'], key=lambda x: float(x[0]))[:5]
 
-    print(f"Detected Iceberg Orders at: {detected_icebergs}")
-    return detected_icebergs
+            # Track price levels and their sizes
+            for level in bids + asks:
+                price, size = level
+                price = float(price)  # Convert to float for consistency
+                if price in iceberg_data:
+                    iceberg_data[price].append(float(size))
+                else:
+                    iceberg_data[price] = [float(size)]
+
+            time.sleep(1)  # Short delay before the next cycle
+
+        # Detect iceberg orders: prices with at least 'refresh_threshold' different sizes
+        detected_icebergs = [
+            price for price, sizes in iceberg_data.items() if len(set(sizes)) >= refresh_threshold
+        ]
+
+        print(f"Detected Iceberg Orders at: {detected_icebergs}")
+        return detected_icebergs
 
 # Example usage
 if __name__ == "__main__":
-    detect_iceberg_orders()
-
+    api = BybitAPI()  # Initialize API
+    detector = IcebergDetector(api)  # Create instance
+    detector.detect_iceberg_orders()  # Detect iceberg orders

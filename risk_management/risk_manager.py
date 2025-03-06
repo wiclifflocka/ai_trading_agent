@@ -1,7 +1,18 @@
 import numpy as np
+import os
+from dotenv import load_dotenv
 from data_pipeline.bybit_api import BybitAPI
+from bybit_client import BybitClient
 
-api = BybitAPI()
+# Load API keys from .env file
+load_dotenv()
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+USE_TESTNET = os.getenv("USE_TESTNET", "True").lower() == "true"
+
+# Initialize API
+api = BybitAPI(API_KEY, API_SECRET, testnet=USE_TESTNET)
+
 
 class RiskManager:
     def __init__(self, symbol="BTCUSDT", max_loss=0.02, volatility_threshold=0.5):

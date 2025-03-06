@@ -2,6 +2,8 @@ import json
 import time
 import pandas as pd
 from bybit_api import BybitAPI
+from clients_bybit import BybitClient
+from data_pipeline.bybit_api import BybitAPI
 
 # Initialize API connection
 api = BybitAPI()

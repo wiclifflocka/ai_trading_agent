@@ -1,32 +1,53 @@
-import numpy as np
-import pandas as pd
 from data_pipeline.bybit_api import BybitAPI
 
-api = BybitAPI()
-
-def compute_order_flow_imbalance(symbol="BTCUSDT"):
+class OFIAnalysis:
     """
-    Calculates Order Flow Imbalance (OFI) to detect institutional buying/selling pressure.
-    :param symbol: Trading pair (e.g., "BTCUSDT")
-    :return: OFI value
+    A class to analyze Order Flow Imbalance (OFI) using Bybit's order book data.
     """
-    data = api.get_order_book(symbol)
+    def __init__(self, api: BybitAPI, symbol: str = "BTCUSDT"):
+        """
+        Initialize the OFIAnalysis with a BybitAPI instance and trading symbol.
 
-    if not data:
-        return None
+        Args:
+            api (BybitAPI): Instance of BybitAPI for fetching order book data.
+            symbol (str): Trading pair (e.g., "BTCUSDT"). Defaults to "BTCUSDT".
+        """
+        self.api = api
+        self.symbol = symbol
 
-    bids = sorted(data['bids'], key=lambda x: x[0], reverse=True)[:5]  # Top 5 bid levels
-    asks = sorted(data['asks'], key=lambda x: x[0])[:5]  # Top 5 ask levels
+    def compute_order_flow_imbalance(self, levels: int = 5) -> float | None:
+        """
+        Calculates Order Flow Imbalance (OFI) to detect buying/selling pressure.
 
-    bid_volumes = sum([b[1] for b in bids])
-    ask_volumes = sum([a[1] for a in asks])
+        Args:
+            levels (int): Number of top bid/ask levels to consider. Defaults to 5.
 
-    ofi = bid_volumes - ask_volumes  # Positive: Buy pressure, Negative: Sell pressure
+        Returns:
+            float | None: OFI value (positive = buy pressure, negative = sell pressure),
+                         or None if data fetch fails.
+        """
+        data = self.api.get_order_book(self.symbol)
 
-    print(f"Order Flow Imbalance: {ofi}")
-    return ofi
+        if not data or 'bids' not in data or 'asks' not in data:
+            print(f"Failed to fetch order book data for {self.symbol}")
+            return None
+
+        # Sort bids by price (descending) and asks by price (ascending), using float for numerical comparison
+        bids = sorted(data['bids'], key=lambda x: float(x[0]), reverse=True)[:levels]
+        asks = sorted(data['asks'], key=lambda x: float(x[0]))[:levels]
+
+        # Calculate total volumes, converting strings to floats
+        bid_volumes = sum(float(b[1]) for b in bids)
+        ask_volumes = sum(float(a[1]) for a in asks)
+
+        # Compute Order Flow Imbalance (OFI)
+        ofi = bid_volumes - ask_volumes  # Positive: Buy pressure, Negative: Sell pressure
+
+        print(f"Order Flow Imbalance for {self.symbol}: {ofi}")
+        return ofi
 
 # Example usage
 if __name__ == "__main__":
-    ofi = compute_order_flow_imbalance()
-
+    api = BybitAPI()  # Initialize API
+    ofi_analysis = OFIAnalysis(api)  # Create instance
+    ofi = ofi_analysis.compute_order_flow_imbalance()  # Calculate OFI
