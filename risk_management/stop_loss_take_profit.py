@@ -1,4 +1,5 @@
 # risk_management/stop_loss_take_profit.py
+from __future__ import annotations
 
 class StopLossTakeProfit:
     def __init__(self, client: BybitClient):

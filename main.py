@@ -10,8 +10,9 @@ from risk_management.max_loss import MaxLossPerTrade
 from risk_management.leverage_control import LeverageControl
 from risk_management.trailing_stop import TrailingStopLoss
 from market_insights.market_analysis import MarketInsights
-from strategies.trading_strategy import TradingStrategy
-from strategy_switcher import StrategySwitcher
+from strategies.trading_strategy import TradingStrategy  
+
+from strategies.strategy_switcher import StrategySwitcher
 
 # Setting up logging for tracking
 logging.basicConfig(level=logging.INFO)
@@ -39,7 +40,8 @@ leverage_control = LeverageControl(client)
 trailing_stop_loss = TrailingStopLoss(client)
 
 # Initialize Market Insights
-market_insights = MarketInsights(client)
+symbols = ["BTCUSDT", "ETHUSDT", "XRPUSDT"]  # Add the trading pairs you want
+market_insights = MarketInsights(client, symbols)
 
 # Initialize Strategy Switcher
 strategy_switcher = StrategySwitcher(client)

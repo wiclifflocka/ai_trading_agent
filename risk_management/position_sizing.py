@@ -1,4 +1,5 @@
 # risk_management/position_sizing.py
+from __future__ import annotations
 
 class RiskManagement:
     def __init__(self, client: BybitClient, account_balance):

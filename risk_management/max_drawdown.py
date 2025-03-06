@@ -1,4 +1,5 @@
 # risk_management/max_drawdown.py
+from __future__ import annotations
 
 class MaxDrawdown:
     def __init__(self, client: BybitClient, initial_balance):

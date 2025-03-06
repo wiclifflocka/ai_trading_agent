@@ -1,4 +1,5 @@
 # risk_management/trailing_stop.py
+from __future__ import annotations
 
 class TrailingStopLoss:
     def __init__(self, client: BybitClient):

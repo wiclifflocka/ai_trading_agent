@@ -1,4 +1,5 @@
 # risk_management/leverage_control.py
+from __future__ import annotations
 
 class LeverageControl:
     def __init__(self, client: BybitClient):

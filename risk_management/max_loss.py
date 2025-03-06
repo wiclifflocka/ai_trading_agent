@@ -1,4 +1,5 @@
 # risk_management/max_loss.py
+from __future__ import annotations
 
 class MaxLossPerTrade:
     def __init__(self, client: BybitClient, account_balance):

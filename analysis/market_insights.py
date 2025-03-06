@@ -4,11 +4,14 @@ from data_pipeline.bybit_api import BybitAPI
 api = BybitAPI()
 
 class MarketInsights:
-    def __init__(self, symbol="BTCUSDT"):
-        """
-        Analyzes order book data to extract market insights.
-        """
-        self.symbol = symbol
+    def __init__(self, client, symbols):
+        self.client = client
+        self.symbols = symbols
+        print(f"MarketInsights initialized for symbols: {self.symbols}")
+
+    def analyze_market(self):
+        print("Analyzing market data...")
+
 
     def get_imbalance_ratio(self):
         """
