@@ -149,4 +149,9 @@ Follow the project's coding standards.
 
 Submit a pull request for review.
 
+License
+This project is licensed under the MIT License (LICENSE).
+Contact
+For questions or support, please contact [collaustine27@gmail.com (mailto:collins4oloo@gmail.com)].
+
 
