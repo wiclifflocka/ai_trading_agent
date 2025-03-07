@@ -1,5 +1,8 @@
 # risk_management/max_drawdown.py
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
+
 
 class MaxDrawdown:
     def __init__(self, client: BybitClient, initial_balance):

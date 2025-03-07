@@ -1,40 +1,77 @@
+# tracking/profit_tracker.py
+"""
+ProfitTracker Module
+
+Tracks and reports profit & loss (P&L) for trading activities.
+"""
+
 import time
 import pandas as pd
 from data_pipeline.bybit_api import BybitAPI
 
-api = BybitAPI()
-
 class ProfitTracker:
-    def __init__(self, symbol="BTCUSDT"):
+    def __init__(self, api: BybitAPI, symbol: str = "BTCUSDT"):
         """
         Tracks and reports profit & loss (P&L).
-        :param symbol: Trading pair
+
+        Args:
+            api (BybitAPI): An instance of BybitAPI for fetching trading data.
+            symbol (str): Trading pair (default: "BTCUSDT").
         """
+        self.api = api
         self.symbol = symbol
         self.trade_log = []
 
     def get_current_position(self):
         """
         Fetches the current position and calculates unrealized P&L.
+
+        Returns:
+            float or None: Unrealized P&L if position exists, None otherwise.
         """
-        position = api.get_open_position(self.symbol)
-        if not position or "entry_price" not in position:
+        try:
+            positions = self.api.get_open_positions(self.symbol)
+            if not positions:
+                return None
+
+            # Assuming the first position is the relevant one (adjust if multiple positions possible)
+            position = positions[0]
+            if "entry_price" not in position:
+                return None
+
+            entry_price = float(position["entry_price"])
+            # Use get_btc_price for BTCUSDT; adjust for other symbols if needed
+            mark_price = float(self.api.get_btc_price()) if self.symbol == "BTCUSDT" else None
+            if mark_price is None:
+                return None
+
+            size = float(position["size"])
+            side = position["side"]  # "Buy" or "Sell"
+
+            pnl = (mark_price - entry_price) * size if side == "Buy" else (entry_price - mark_price) * size
+            return pnl
+        except Exception as e:
+            print(f"Error fetching current position: {e}")
             return None
 
-        entry_price = float(position["entry_price"])
-        mark_price = float(api.get_market_price(self.symbol))
-        size = float(position["size"])
-        side = position["side"]  # "Buy" or "Sell"
-
-        pnl = (mark_price - entry_price) * size if side == "Buy" else (entry_price - mark_price) * size
-        return pnl
-
-    def record_trade(self, entry_price, exit_price, size, side):
+    def record_trade(self, entry_price: float, exit_price: float, size: float, side: str):
         """
         Logs a completed trade.
+
+        Args:
+            entry_price (float): Price at which the trade was entered.
+            exit_price (float): Price at which the trade was exited.
+            size (float): Trade size (quantity).
+            side (str): "Buy" or "Sell".
         """
         pnl = (exit_price - entry_price) * size if side == "Buy" else (entry_price - exit_price) * size
-        self.trade_log.append({"Entry": entry_price, "Exit": exit_price, "Size": size, "Side": side, "PnL": pnl})
+        self.trade_log.append({
+            "Entry": entry_price,
+            "Exit": exit_price,
+            "Size": size,
+            "Side": side,
+            "PnL": pnl
+        })
 
     def generate_report(self):
         """
@@ -56,6 +93,9 @@ class ProfitTracker:
         print(f"💰 **Total Profit/Loss: {total_pnl:.4f} USDT**")
 
     def run(self):
+        """
+        Continuously monitors and reports unrealized P&L.
+        """
         while True:
             pnl = self.get_current_position()
             if pnl is not None:
@@ -63,6 +103,9 @@ class ProfitTracker:
             time.sleep(5)
 
 if __name__ == "__main__":
-    tracker = ProfitTracker()
+    # Example usage with credentials
+    API_KEY = "your_api_key_here"  # Replace with actual key
+    API_SECRET = "your_api_secret_here"  # Replace with actual secret
+    api = BybitAPI(API_KEY, API_SECRET, testnet=True)
+    tracker = ProfitTracker(api)
     tracker.run()
-

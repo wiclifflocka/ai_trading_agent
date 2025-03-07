@@ -1,53 +1,74 @@
-from data_pipeline.bybit_api import BybitAPI
+# analysis/ofi_analysis.py
+"""
+Order Flow Imbalance (OFI) Analysis Module
+
+Calculates buying/selling pressure using order book data
+"""
+
+import logging
+from typing import Optional
+from data_pipeline.bybit_api import BybitAPI  # Changed to BybitAPI
+
+logger = logging.getLogger(__name__)
 
 class OFIAnalysis:
-    """
-    A class to analyze Order Flow Imbalance (OFI) using Bybit's order book data.
-    """
     def __init__(self, api: BybitAPI, symbol: str = "BTCUSDT"):
         """
-        Initialize the OFIAnalysis with a BybitAPI instance and trading symbol.
+        Initialize OFI analyzer
 
         Args:
-            api (BybitAPI): Instance of BybitAPI for fetching order book data.
-            symbol (str): Trading pair (e.g., "BTCUSDT"). Defaults to "BTCUSDT".
+            api: Authenticated BybitAPI instance
+            symbol: Trading pair (default: BTCUSDT)
         """
         self.api = api
         self.symbol = symbol
 
-    def compute_order_flow_imbalance(self, levels: int = 5) -> float | None:
+    def compute_order_flow_imbalance(self, levels: int = 5) -> Optional[float]:
         """
-        Calculates Order Flow Imbalance (OFI) to detect buying/selling pressure.
+        Calculate normalized OFI (-1 to 1 range)
 
         Args:
-            levels (int): Number of top bid/ask levels to consider. Defaults to 5.
+            levels: Number of order book levels to consider
 
         Returns:
-            float | None: OFI value (positive = buy pressure, negative = sell pressure),
-                         or None if data fetch fails.
+            OFI ratio (positive = buy pressure, negative = sell pressure) or None if failed
         """
-        data = self.api.get_order_book(self.symbol)
+        try:
+            # Get order book data using BybitAPI
+            order_book = self.api.get_order_book(self.symbol)
+            if not order_book or 'bids' not in order_book or 'asks' not in order_book:
+                logger.error("Invalid order book response")
+                return None
 
-        if not data or 'bids' not in data or 'asks' not in data:
-            print(f"Failed to fetch order book data for {self.symbol}")
+            bids = order_book['bids']
+            asks = order_book['asks']
+
+            if not bids or not asks:
+                logger.warning("Empty order book data")
+                return None
+
+            # Process top levels
+            bid_vol = sum(float(b[1]) for b in sorted(
+                bids,
+                key=lambda x: float(x[0]),
+                reverse=True
+            )[:levels])
+
+            ask_vol = sum(float(a[1]) for a in sorted(
+                asks,
+                key=lambda x: float(x[0])
+            )[:levels])
+
+            # Calculate normalized OFI
+            total_vol = bid_vol + ask_vol
+            if total_vol == 0:
+                return 0.0
+
+            return (bid_vol - ask_vol) / total_vol
+
+        except KeyError as e:
+            logger.error(f"Missing key in order book: {str(e)}")
             return None
-
-        # Sort bids by price (descending) and asks by price (ascending), using float for numerical comparison
-        bids = sorted(data['bids'], key=lambda x: float(x[0]), reverse=True)[:levels]
-        asks = sorted(data['asks'], key=lambda x: float(x[0]))[:levels]
-
-        # Calculate total volumes, converting strings to floats
-        bid_volumes = sum(float(b[1]) for b in bids)
-        ask_volumes = sum(float(a[1]) for a in asks)
-
-        # Compute Order Flow Imbalance (OFI)
-        ofi = bid_volumes - ask_volumes  # Positive: Buy pressure, Negative: Sell pressure
-
-        print(f"Order Flow Imbalance for {self.symbol}: {ofi}")
-        return ofi
-
-# Example usage
-if __name__ == "__main__":
-    api = BybitAPI()  # Initialize API
-    ofi_analysis = OFIAnalysis(api)  # Create instance
-    ofi = ofi_analysis.compute_order_flow_imbalance()  # Calculate OFI
+        except Exception as e:
+            logger.error(f"OFI calculation failed: {str(e)}")
+            return None
