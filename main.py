@@ -51,15 +51,15 @@ from strategies.strategy_switcher import StrategySwitcher
 from tracking.profit_tracker import ProfitTracker
 from tracking.strategy_report import StrategyReport
 
-# Setting up logging
-logging.basicConfig(level=logging.INFO)
+# Setting up logging with timestamps
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Configuration Variables
 API_KEY = '05EqRWk80CvjiSto64'
 API_SECRET = '6OhCdDGX7JQGePrqWd5Axl2q7k5SPNccprtH'
 SYMBOL = 'BTCUSDT'
-RISK_PERCENTAGE = 1
+RISK_PERCENTAGE = 1  # Risk 1% of balance per trade
 DATA_DIR = 'data'
 
 # Ensure data directory exists
@@ -68,15 +68,15 @@ if not os.path.exists(DATA_DIR):
     logger.info(f"Created directory: {DATA_DIR}")
 
 # Initialize Bybit Client and API
-client = BybitClient(API_KEY, API_SECRET)
+client = BybitClient(API_KEY, API_SECRET, testnet=True)
 api = BybitAPI(API_KEY, API_SECRET, testnet=True)
 
 # Initialize Components
 order_book_analysis = OrderBookAnalysis(api, symbol=SYMBOL)
-risk_manager = RiskManagement(client, account_balance=10000)
-max_drawdown = MaxDrawdown(client, initial_balance=10000)
+risk_manager = RiskManagement(client, account_balance=10000)  # Will be updated dynamically
+max_drawdown = MaxDrawdown(client, initial_balance=10000)    # Will use current balance
 stop_loss_take_profit = StopLossTakeProfit(client)
-max_loss = MaxLossPerTrade(client, account_balance=10000)
+max_loss = MaxLossPerTrade(client, account_balance=10000)    # Will use current balance
 leverage_control = LeverageControl(client)
 trailing_stop_loss = TrailingStopLoss(client)
 symbols = ["BTCUSDT", "ETHUSDT", "XRPUSDT"]
@@ -104,8 +104,15 @@ def check_risk_management() -> bool:
     try:
         current_balance = client.get_balance()
         if current_balance is None or not isinstance(current_balance, (int, float)):
-            logger.error(f"Invalid balance received: {current_balance}. Assuming initial balance.")
+            logger.error(f"Invalid balance received: {current_balance}. Assuming fallback balance.")
             current_balance = 10000  # Fallback to initial balance
+        else:
+            logger.info(f"Fetched current balance: {current_balance} USD")
+
+        # Update risk management components with current balance
+        risk_manager.account_balance = current_balance
+        max_loss.account_balance = current_balance
+
         if max_drawdown.check_drawdown(current_balance):
             logger.warning("Max Drawdown Exceeded, stopping trading!")
             return False
@@ -154,7 +161,7 @@ def analyze_order_book():
         ofi_result = ofi_analysis.compute_order_flow_imbalance()
         if ofi_result is not None:
             logger.info(f"OFI from OFIAnalysis: {ofi_result}")
-        
+
         # Skip detectors until their input requirements are clarified
         # iceberg_detector.detect_iceberg_orders(order_book_data)
         # stop_hunt_detector.detect_stop_hunts()

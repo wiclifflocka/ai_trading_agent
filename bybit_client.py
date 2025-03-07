@@ -11,18 +11,18 @@ Features:
 - Historical kline data
 - Position management
 - Leverage control
-- Order book retrieval (for compatibility with other modules)
+- Order book retrieval
 
 Requirements:
 - pybit library (install with `pip install pybit`)
 - Valid Bybit testnet API keys (from https://testnet.bybit.com)
 """
 
-from pybit.unified_trading import HTTP
 import logging
+from pybit.unified_trading import HTTP
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class BybitClient:
@@ -39,10 +39,7 @@ class BybitClient:
         self.client = HTTP(
             testnet=testnet,
             api_key=api_key,
-            api_secret=api_secret,
-            # Optional: Enable request logging
-            # enable_time_sync=True,
-            # request_timeout=10
+            api_secret=api_secret
         )
 
     def get_balance(self) -> float:
@@ -53,27 +50,27 @@ class BybitClient:
             float: Total equity in USDT, or 10000.0 if retrieval fails
 
         Notes:
-            - Matches main.py's usage by taking no arguments
             - Returns a fallback value to prevent invalid drawdown calculations
         """
         try:
             response = self.client.get_wallet_balance(
-                accountType="UNIFIED",  # Unified account mode
+                accountType="UNIFIED",
                 coin="USDT"
             )
-            balance_list = response['result']['list']
+            logger.info(f"API Response from get_wallet_balance: {response}")
+            balance_list = response.get('result', {}).get('list', [])
             if not balance_list or 'coin' not in balance_list[0]:
-                logger.warning("No balance data found, returning fallback value")
-                return 10000.0  # Fallback to initial balance
+                logger.warning("No balance data found, returning fallback value 10000.0")
+                return 10000.0
             for coin_data in balance_list[0]['coin']:
                 if coin_data['coin'] == "USDT":
                     balance = float(coin_data['equity'])
-                    logger.info(f"USDT Balance: {balance}")
+                    logger.info(f"Fetched USDT Equity Balance: {balance} USD")
                     return balance
-            logger.warning("No USDT balance found, returning fallback value")
+            logger.warning("No USDT balance found, returning fallback value 10000.0")
             return 10000.0
         except Exception as e:
-            logger.warning(f"Balance check failed: {str(e)}, returning fallback value")
+            logger.warning(f"Balance check failed: {str(e)}, returning fallback value 10000.0")
             return 10000.0
 
     def place_order(
@@ -81,20 +78,16 @@ class BybitClient:
         symbol: str,
         qty: float,
         side: str,
-        order_type: str = "Limit",
-        price: float = None,
-        time_in_force: str = "GTC"
+        order_type: str = "Market"
     ) -> dict:
         """
-        Place a new order (spot or derivatives)
+        Place a new order (market order by default)
 
         Args:
             symbol (str): Trading pair (e.g., 'BTCUSDT')
             qty (float): Order quantity
             side (str): 'Buy' or 'Sell'
-            order_type (str): 'Limit' or 'Market'
-            price (float): Required for limit orders
-            time_in_force (str): Order lifetime (GTC, IOC, FOK)
+            order_type (str): 'Market' or 'Limit'
 
         Returns:
             dict: Order response from Bybit
@@ -103,15 +96,15 @@ class BybitClient:
             Exception: On placement failure
         """
         try:
-            return self.client.place_order(
+            order = self.client.place_order(
                 category="linear",
                 symbol=symbol,
                 side=side.capitalize(),
                 orderType=order_type,
-                qty=str(qty),
-                price=str(price) if price else None,
-                timeInForce=time_in_force
+                qty=str(qty)
             )
+            logger.info(f"Order placed successfully: {order}")
+            return order
         except Exception as e:
             logger.error(f"Order failed: {str(e)}")
             raise
@@ -125,9 +118,6 @@ class BybitClient:
 
         Returns:
             float: Last traded price
-
-        Raises:
-            Exception: On data retrieval failure
         """
         try:
             response = self.client.get_tickers(
@@ -174,23 +164,20 @@ class BybitClient:
 
     def close_all_positions(self, symbol: str) -> dict | None:
         """
-        Close all open positions for a symbol (spot and derivatives)
+        Close all open positions for a symbol
 
         Args:
             symbol (str): Trading pair to close
 
         Returns:
             dict | None: API response if positions closed, None if no positions
-
-        Raises:
-            Exception: On closure failure
         """
         try:
             positions = self.get_positions(symbol)
             if not positions:
                 logger.info(f"No open positions to close for {symbol}")
                 return None
-            position = positions[0]  # Assuming one position per symbol for simplicity
+            position = positions[0]
             if float(position["size"]) > 0:
                 return self.client.place_order(
                     category="linear",
@@ -215,9 +202,6 @@ class BybitClient:
 
         Returns:
             list: List of position details
-
-        Raises:
-            Exception: On retrieval failure
         """
         try:
             response = self.client.get_positions(
@@ -236,9 +220,6 @@ class BybitClient:
         Args:
             symbol (str): Trading pair (e.g., 'BTCUSDT')
             leverage (int): Desired leverage (default: 10)
-
-        Raises:
-            Exception: On failure
         """
         try:
             self.client.set_leverage(
@@ -261,9 +242,6 @@ class BybitClient:
 
         Returns:
             dict: Order book with 'bids' and 'asks' lists
-
-        Raises:
-            Exception: On retrieval failure
         """
         try:
             response = self.client.get_orderbook(
@@ -282,18 +260,6 @@ class BybitClient:
 
 # Example Usage
 if __name__ == "__main__":
-    client = BybitClient(
-        api_key="05EqRWk80CvjiSto64",
-        api_secret="6OhCdDGX7JQGePrqWd5Axl2q7k5SPNccprtH",
-        testnet=True
-    )
-
-    try:
-        btc_price = client.get_market_price("BTCUSDT")
-        print(f"Current BTC Price: ${btc_price:,.2f}")
-        balance = client.get_balance()
-        print(f"USDT Balance: ${balance:,.2f}")
-        order_book = client.get_order_book("BTCUSDT")
-        print(f"Order Book: {order_book}")
-    except Exception as e:
-        print(f"Error: {str(e)}")
+    client = BybitClient("YOUR_TESTNET_API_KEY", "YOUR_TESTNET_API_SECRET", testnet=True)
+    balance = client.get_balance()
+    print(f"Unified USDT Balance: {balance} USD")

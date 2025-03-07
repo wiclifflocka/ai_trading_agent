@@ -1,108 +1,152 @@
 AI Trading Agent for Bybit
-This project creates a sophisticated AI agent designed to trade profitably on Bybit, using advanced market analysis strategies. The agent reads the order book, applies scalping and HFT (High-Frequency Trading) strategies, tracks profits, and generates performance reports.
+
+This project is an AI-powered trading agent designed to automate cryptocurrency trading on the Bybit platform. It leverages real-time market data, risk management techniques, and AI-driven decision-making to execute trades efficiently. The agent is modular, allowing for easy customization and extension of its features.
+
+Table of Contents
+
+Project Overview (#project-overview)
+
+Key Features (#key-features)
+
+Current Setup (#current-setup)
+
+Getting Started (#getting-started)
+Prerequisites (#prerequisites)
+
+Installation (#installation)
+
+Configuration (#configuration)
+
+Running the Agent (#running-the-agent)
+
+Usage (#usage)
+
+Troubleshooting (#troubleshooting)
+
+Future Enhancements (#future-enhancements)
+
+Contributing (#contributing)
+
+License (#license)
+
+Contact (#contact)
 
 
-📂 Table of Contents
+Project Overview
 
-Features
+The AI Trading Agent automates cryptocurrency trading on Bybit by integrating modules for market analysis, risk management, trade execution, and performance tracking. It is designed to help traders make data-driven decisions while minimizing risk and maximizing profitability.
+
+Key Features
+Market Data Analysis:
+Real-time order book analysis and calculation of Order Flow Imbalance (OFI).
+
+Market insights for multiple symbols (e.g., BTCUSDT, ETHUSDT, XRPUSDT).
+
+Advanced detection tools (under development) for iceberg orders and stop hunts.
+
+Risk Management:
+Dynamic position sizing based on account balance and risk percentage.
+
+Automatic stop-loss, take-profit, and trailing stop-loss settings.
+
+Leverage control and max loss per trade to limit exposure.
+
+Max drawdown monitoring to halt trading if losses exceed a threshold.
+
+Trade Execution:
+Supports multiple strategies: High-Frequency Trading (HFT), Market Making, and Scalping.
+
+AI-driven decision-making to predict actions like "BUY," "SELL," or "HOLD."
+
+Self-Learning and Adaptation:
+Trains an AI model using historical trade data to improve decision-making over time.
+
+Performance Tracking and Reporting:
+Real-time profit tracking and strategy performance reports.
+
+Current Setup
+The agent is configured to run on Bybit's testnet, allowing for simulated trading without risking real funds.
+
+Some features, such as the AI learning component and advanced detection tools, are still under development.
+
+
+Getting Started
+Prerequisites
+Python 3.x
+
+Bybit Testnet Account: Sign up at Bybit Testnet and generate API keys.
+
+Dependencies:
+pybit: Bybit's official Python SDK.
+
+Other libraries as required (e.g., numpy, pandas, keras for AI components).
+
 Installation
-Environment Setup
-How to Use
-Deployment
+Clone the repository:
+bash
+
+git clone https://github.com/yourusername/ai_trading_agent.git
+cd ai_trading_agent
+
+Install the required dependencies:
+bash
+
+pip install pybit numpy pandas keras
+
 Configuration
-Testing
-License
+Update the API_KEY and API_SECRET in main.py with your Bybit testnet API credentials:
+python
 
+API_KEY = 'your_testnet_api_key'
+API_SECRET = 'your_testnet_api_secret'
 
-🔧 Features
+Ensure the SYMBOL variable is set to the desired trading pair (e.g., 'BTCUSDT').
 
-Real-time Order Book Streaming: The AI agent continuously monitors the Bybit order book.
-Scalping & HFT Strategies: Trades based on advanced, high-frequency strategies to maximize profits.
-Profit Tracking: Tracks both unrealized and realized P&L (Profit & Loss) in real-time.
-Strategy Performance Reports: Provides detailed reports on strategy performance, including win rate, total P&L, and other metrics.
-Market Insights: Provides analysis of market conditions such as order book imbalance, aggression, and potential iceberg orders.
-Real-time Alerts: Sends Telegram alerts for significant events like trade executions, P&L updates, and more.
-Self-Learning: Continuously improves strategy performance based on historical trades.
+Running the Agent
+Execute the main script:
+bash
 
-⚙️ Installation
-1. Clone the Repository
-git clone https://github.com/yourusername/bybit-ai-trading-agent.git
-cd bybit-ai-trading-agent
-
-
-2. Install Python & Dependencies
-Ensure that you have Python 3.x installed. If not, install it first.
-
-Install required Python dependencies:
-pip install -r requirements.txt
-
-🌍 Environment Setup
-1. Setup API Keys
-Create a .env file to store your Bybit API keys and other configuration settings.
-cp .env.example .env
-nano .env
-
-Inside the .env file, add your Bybit API key and secret:
-BYBIT_API_KEY=your_api_key_here
-BYBIT_API_SECRET=your_api_secret_here
-ENABLE_PROFIT_TRACKER=True
-ENABLE_STRATEGY_REPORT=True
-ENABLE_MARKET_INSIGHTS=True
-
-Make sure to replace the placeholders with your real Bybit API credentials.
-
-🛠️ How to Use
-1. Start the AI Trading Agent
-Run the agent in a screen session to ensure it runs continuously even when disconnected from the server.
-screen -S trading_bot
 python main.py
 
-To detach from the screen session, press CTRL + A, then D. To reattach:
-screen -r trading_bot
+The agent will start analyzing market conditions, executing trades, and generating reports in a loop.
 
-2. Monitor Strategy & Profit
-Use the following scripts to monitor the agent's performance:
+Usage
+The agent runs continuously, checking market conditions every 10 seconds.
 
-Profit Tracker: Tracks real-time P&L.
-python tracking/profit_tracker.py
+It analyzes the order book, calculates OFI, and executes trades based on its strategies and risk management rules.
+
+Logs are generated to track the agent's activities, including balance checks, trade executions, and any errors.
+
+Troubleshooting
+No Balance in Testnet Account:
+If you see Fetched current balance: 0.0 USD, fund your Bybit testnet account with USDT via the testnet platform.
+
+Error Fetching Recent Trades:
+Ensure the get_recent_trades method in bybit_api.py uses the correct pybit method (get_public_trading_records).
+
+Max Drawdown Exceeded:
+This warning appears if the account balance is too low. Ensure your testnet account has sufficient funds.
+
+Other API Errors:
+Check the logs for specific error messages and verify your API keys and permissions.
+
+Future Enhancements
+Fully implement the AI learning component for improved decision-making.
+
+Integrate advanced detection tools for iceberg orders and stop hunts.
+
+Switch to Bybit's mainnet for live trading with real funds.
+
+Customize risk parameters, trading strategies, and symbols for optimal performance.
+
+Contributing
+Contributions are welcome! To contribute:
+Fork the repository.
+
+Create a new branch for your feature or bugfix.
+
+Follow the project's coding standards.
+
+Submit a pull request for review.
 
 
-Strategy Report: Displays performance of each strategy.
-python tracking/strategy_report.py
-
-
-Market Insights: Analyzes market conditions based on the order book.
-python analysis/market_insights.py
-
-🚀 Deployment
-1. Set Up Server
-For production, deploy the AI trading agent on a VPS (e.g., DigitalOcean, AWS, Linode).
-Ensure that your server has Python 3 installed and the environment is set up.
-
-2. Run with Cron Jobs
-To continuously track profits and market insights, set up cron jobs to run the scripts automatically:
-crontab -e
-
-Add the following cron jobs to run every 5 minutes:
-*/5 * * * * /usr/bin/python3 /path/to/tracking/profit_tracker.py
-*/5 * * * * /usr/bin/python3 /path/to/tracking/strategy_report.py
-*/5 * * * * /usr/bin/python3 /path/to/analysis/market_insights.py
-
-🔧 Configuration
-You can modify key parameters in the .env file to adjust the agent’s behavior:
-
-BYBIT_API_KEY: Your Bybit API Key.
-BYBIT_API_SECRET: Your Bybit API Secret.
-ENABLE_PROFIT_TRACKER: Set to True to enable real-time profit tracking.
-ENABLE_STRATEGY_REPORT: Set to True to generate strategy performance reports.
-ENABLE_MARKET_INSIGHTS: Set to True to enable market condition analysis.
-
-🧪 Testing
-To ensure the code is working, you can run unit tests for core functionalities:
-
-bash
-pytest tests/
-This will check the logic of the trading agent, profit tracker, and other modules.
-
-📜 License
-This project is licensed under the MIT License - see the LICENSE file for details.
