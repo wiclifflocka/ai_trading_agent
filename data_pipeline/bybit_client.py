@@ -1,4 +1,13 @@
+# bybit_client.py
+"""
+Bybit API Client for Spot and Derivatives Trading
+
+A comprehensive interface for interacting with Bybit's API, supporting trading operations
+and data retrieval. Configured for testnet by default.
+"""
+
 import logging
+import time
 from pybit.unified_trading import HTTP
 
 # Set up logging with a detailed format
@@ -7,29 +16,15 @@ logger = logging.getLogger(__name__)
 
 class BybitClient:
     """
-    Bybit API Client for Spot and Derivatives Trading
-
-    A comprehensive interface for interacting with Bybit's API, supporting trading operations
-    and data retrieval. Configured for testnet by default.
-
     Features:
     - Account balance checks (USDT equity)
     - Order placement (market and limit)
     - Market price retrieval
-    - Historical kline/candlestick data
+    - Historical kline/candlestick data with retry mechanism
     - Position management (view and close)
     - Leverage control
     - Order book data
     - Recent trade records
-
-    Args:
-        api_key (str): Bybit API key
-        api_secret (str): Bybit API secret
-        testnet (bool): True for demo account, False for live trading (default: True)
-
-    Requirements:
-    - pybit library (install with `pip install pybit`)
-    - Valid Bybit API keys (testnet keys from https://testnet.bybit.com)
     """
 
     def __init__(self, api_key: str, api_secret: str, testnet: bool = True):
@@ -39,6 +34,7 @@ class BybitClient:
             api_key=api_key,
             api_secret=api_secret
         )
+        logger.info("BybitClient initialized")
 
     def get_balance(self) -> float:
         """
@@ -46,9 +42,6 @@ class BybitClient:
 
         Returns:
             float: Total equity in USDT, or 10000.0 if retrieval fails
-
-        Notes:
-        - Uses a fallback value to prevent invalid calculations in demo scenarios
         """
         try:
             response = self.client.get_wallet_balance(accountType="UNIFIED", coin="USDT")
@@ -80,9 +73,6 @@ class BybitClient:
 
         Returns:
             dict: Order response from Bybit
-
-        Raises:
-            Exception: On placement failure
         """
         try:
             order = self.client.place_order(
@@ -107,9 +97,6 @@ class BybitClient:
 
         Returns:
             float: Last traded price
-
-        Raises:
-            Exception: On retrieval failure
         """
         try:
             response = self.client.get_tickers(category="linear", symbol=symbol)
@@ -122,7 +109,7 @@ class BybitClient:
 
     def get_historical_data(self, symbol: str, interval: str = "15", limit: int = 200) -> list:
         """
-        Get historical kline/candlestick data.
+        Get historical kline/candlestick data with retry mechanism.
 
         Args:
             symbol (str): Trading pair (e.g., "BTCUSDT")
@@ -131,27 +118,44 @@ class BybitClient:
 
         Returns:
             list: Array of [timestamp, open, high, low, close, volume] as floats
-
-        Raises:
-            Exception: On retrieval failure
         """
-        try:
-            response = self.client.get_kline(
-                category="linear",
-                symbol=symbol,
-                interval=interval,
-                limit=limit
-            )
-            data = [
-                [float(item[0]), float(item[1]), float(item[2]),
-                 float(item[3]), float(item[4]), float(item[5])]
-                for item in response['result']['list']
-            ]
-            logger.info(f"Fetched {len(data)} historical data points for {symbol}")
-            return data
-        except Exception as e:
-            logger.error(f"Error fetching historical data for {symbol}: {e}")
-            raise
+        for attempt in range(3):
+            try:
+                response = self.client.get_kline(
+                    category="linear",
+                    symbol=symbol,
+                    interval=interval,
+                    limit=limit
+                )
+                data = [
+                    [float(item[0]), float(item[1]), float(item[2]),
+                     float(item[3]), float(item[4]), float(item[5])]
+                    for item in response['result']['list']
+                ]
+                logger.info(f"Fetched {len(data)} historical data points for {symbol}")
+                return data
+            except Exception as e:
+                logger.error(f"Attempt {attempt + 1} failed to fetch historical data for {symbol}: {e}")
+                if attempt < 2:
+                    time.sleep(2)  # Wait before retrying
+                else:
+                    logger.warning(f"All attempts failed for {symbol}, returning empty list")
+                    return []
+        return []
+
+    def get_candlestick(self, symbol: str, interval: str = "15", limit: int = 200) -> list:
+        """
+        Get historical candlestick data for a symbol (alias for get_historical_data).
+
+        Args:
+            symbol (str): Trading pair (e.g., "BTCUSDT")
+            interval (str): Candle interval in minutes (e.g., "1", "5", "15", "60")
+            limit (int): Number of candles to retrieve (max 1000, default: 200)
+
+        Returns:
+            list: Array of [timestamp, open, high, low, close, volume] as floats
+        """
+        return self.get_historical_data(symbol, interval, limit)
 
     def close_position(self, symbol: str) -> dict | None:
         """
@@ -162,9 +166,6 @@ class BybitClient:
 
         Returns:
             dict | None: API response if position closed, None if no position
-
-        Raises:
-            Exception: On closure failure
         """
         try:
             positions = self.get_positions(symbol)
@@ -198,9 +199,6 @@ class BybitClient:
 
         Returns:
             list: List of position details
-
-        Raises:
-            Exception: On retrieval failure
         """
         try:
             response = self.client.get_positions(category="linear", symbol=symbol)
@@ -218,9 +216,6 @@ class BybitClient:
         Args:
             symbol (str): Trading pair (e.g., "BTCUSDT")
             leverage (int): Desired leverage (default: 10)
-
-        Raises:
-            Exception: On setting failure
         """
         try:
             self.client.set_leverage(
@@ -234,6 +229,35 @@ class BybitClient:
             logger.error(f"Error setting leverage for {symbol}: {e}")
             raise
 
+    def get_leverage(self, symbol: str) -> float | None:
+        """
+        Fetch the current leverage for a specific trading symbol.
+
+        Args:
+            symbol (str): The trading symbol (e.g., "BTCUSDT")
+
+        Returns:
+            float | None: The leverage as a float if successful, otherwise None
+        """
+        try:
+            response = self.client.get_positions(category="linear", symbol=symbol)
+            if response['retCode'] == 0:
+                positions = response.get('result', {}).get('list', [])
+                if positions:
+                    leverage = positions[0].get('leverage')
+                    if leverage is not None:
+                        logger.info(f"Leverage for {symbol}: {leverage}x")
+                        return float(leverage)
+                    logger.warning(f"No leverage data found for symbol {symbol}")
+                    return None
+                logger.info(f"No positions found for symbol {symbol}")
+                return None
+            logger.error(f"API error for symbol {symbol}: {response.get('retMsg', 'Unknown error')}")
+            return None
+        except Exception as e:
+            logger.error(f"Exception while fetching leverage for {symbol}: {e}")
+            return None
+
     def get_order_book(self, symbol: str) -> dict:
         """
         Get order book data for a symbol.
@@ -243,9 +267,6 @@ class BybitClient:
 
         Returns:
             dict: Order book with 'bids' and 'asks' lists (price, quantity as strings)
-
-        Raises:
-            Exception: On retrieval failure
         """
         try:
             response = self.client.get_orderbook(category="linear", symbol=symbol, limit=5)
@@ -260,42 +281,36 @@ class BybitClient:
             logger.error(f"Error fetching order book for {symbol}: {e}")
             raise
 
-    def get_recent_trades(self, symbol: str) -> list:
+    def get_recent_trades(self, symbol: str, limit: int = 10) -> list:
         """
         Fetch recent trading records for a symbol.
 
         Args:
             symbol (str): Trading pair (e.g., "BTCUSDT")
+            limit (int): Number of trades to fetch (default: 10)
 
         Returns:
             list: List of recent trades, empty list if retrieval fails
         """
         try:
-            response = self.client.get_recent_trades(category="linear", symbol=symbol, limit=10)
-            trades = response["result"]["list"]
+            response = self.client.get_public_trade(
+                category="linear",
+                symbol=symbol,
+                limit=limit
+            )
+            trades = response.get("result", {}).get("list", [])
             logger.info(f"Fetched {len(trades)} recent trades for {symbol}")
             return trades
-        except AttributeError:
-            # Fallback for older pybit versions
-            try:
-                response = self.client.get_public_trade_records(category="linear", symbol=symbol, limit=10)
-                trades = response["result"]["list"]
-                logger.info(f"Fetched {len(trades)} recent trades for {symbol} (fallback method)")
-                return trades
-            except Exception as e:
-                logger.error(f"Error fetching recent trades for {symbol}: {e}")
-                return []
         except Exception as e:
             logger.error(f"Error fetching recent trades for {symbol}: {e}")
             return []
 
 # Example Usage
 if __name__ == "__main__":
-    api_key = "YOUR_TESTNET_API_KEY"  # Replace with your actual key
-    api_secret = "YOUR_TESTNET_API_SECRET"  # Replace with your actual secret
+    api_key = "05EqRWk80CvjiSto64"
+    api_secret = "6OhCdDGX7JQGePrqWd5Axl2q7k5SPNccprtH"
     client = BybitClient(api_key, api_secret, testnet=True)
 
-    # Test some methods
     balance = client.get_balance()
     print(f"Unified USDT Balance: {balance} USD")
 
@@ -304,3 +319,8 @@ if __name__ == "__main__":
 
     order_book = client.get_order_book("BTCUSDT")
     print(f"Order Book (first bid/ask): {order_book['bids'][0]}, {order_book['asks'][0]}")
+
+    historical_data = client.get_historical_data("BTCUSDT")
+    print(f"Historical Data (first entry): {historical_data[0]}")
+
+

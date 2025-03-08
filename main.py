@@ -160,7 +160,7 @@ def execute_trade():
         strategy_switcher.execute()
     except Exception as e:
         logger.error(f"Error in execute_trade: {e}")
-
+        
 def analyze_order_book():
     try:
         order_book_data = order_book_collector.fetch_order_book(SYMBOL)

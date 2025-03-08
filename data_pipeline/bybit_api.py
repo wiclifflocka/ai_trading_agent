@@ -39,6 +39,9 @@ class BybitAPI:
         """
         try:
             response = self.client.get_tickers(category="linear", symbol="BTCUSDT")
+            if response.get("retCode") != 0:
+                logger.error(f"API error fetching BTC price: {response.get('retMsg')}")
+                return None
             price = float(response["result"]["list"][0]["lastPrice"])
             logger.info(f"BTC Price: {price}")
             return price
@@ -63,6 +66,9 @@ class BybitAPI:
                 symbol=symbol,
                 limit=limit
             )
+            if response.get("retCode") != 0:
+                logger.error(f"API error fetching recent trades for {symbol}: {response.get('retMsg')}")
+                return []
             trades = response.get("result", {}).get("list", [])
             logger.info(f"Fetched {len(trades)} recent trades for {symbol}")
             return trades
@@ -82,6 +88,9 @@ class BybitAPI:
         """
         try:
             response = self.client.get_positions(category="linear", symbol=symbol)
+            if response.get("retCode") != 0:
+                logger.error(f"API error fetching positions for {symbol}: {response.get('retMsg')}")
+                return []
             positions = response["result"]["list"]
             logger.info(f"Fetched {len(positions)} open positions for {symbol}")
             return positions
@@ -132,6 +141,9 @@ class BybitAPI:
                 orderType="Market",
                 qty=str(qty)
             )
+            if response.get("retCode") != 0:
+                logger.error(f"API error placing order for {symbol}: {response.get('retMsg')}")
+                raise Exception(f"Order failed: {response.get('retMsg')}")
             logger.info(f"Order placed successfully: {response}")
             return response
         except Exception as e:
@@ -150,16 +162,16 @@ class BybitAPI:
         """
         try:
             response = self.client.get_orderbook(category="linear", symbol=symbol, limit=5)
-            if response and 'result' in response:
-                result = response['result']
-                order_book = {
-                    'bids': [(str(bid[0]), str(bid[1])) for bid in result['b']],
-                    'asks': [(str(ask[0]), str(ask[1])) for ask in result['a']]
-                }
-                logger.info(f"Fetched order book for {symbol}")
-                return order_book
-            logger.error(f"Failed to fetch order book data for {symbol}: Invalid response")
-            return None
+            if response.get("retCode") != 0:
+                logger.error(f"API error fetching order book for {symbol}: {response.get('retMsg')}")
+                return None
+            result = response['result']
+            order_book = {
+                'bids': [(str(bid[0]), str(bid[1])) for bid in result['b']],
+                'asks': [(str(ask[0]), str(ask[1])) for ask in result['a']]
+            }
+            logger.info(f"Fetched order book for {symbol}")
+            return order_book
         except Exception as e:
             logger.error(f"Error fetching order book for {symbol}: {e}")
             return None
@@ -183,6 +195,9 @@ class BybitAPI:
                 interval=interval,
                 limit=limit
             )
+            if response.get("retCode") != 0:
+                logger.error(f"API error fetching historical data for {symbol}: {response.get('retMsg')}")
+                return []
             data = response["result"]["list"]
             logger.info(f"Fetched {len(data)} historical data points for {symbol}")
             return data
