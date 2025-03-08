@@ -103,6 +103,10 @@ profit_tracker = ProfitTracker(api, SYMBOL)
 strategy_report = StrategyReport(client=client)
 
 def check_risk_management() -> bool:
+    """
+    Check risk management conditions before executing trades.
+    Returns True if all checks pass, False otherwise.
+    """
     try:
         current_balance = client.get_balance()
         if current_balance is None or not isinstance(current_balance, (int, float)):
@@ -135,6 +139,7 @@ def check_risk_management() -> bool:
         return False
 
 def execute_trade():
+    """Execute a trade based on market analysis and risk management."""
     if not check_risk_management():
         return
 
@@ -160,8 +165,9 @@ def execute_trade():
         strategy_switcher.execute()
     except Exception as e:
         logger.error(f"Error in execute_trade: {e}")
-        
+
 def analyze_order_book():
+    """Analyze the order book for market insights."""
     try:
         order_book_data = order_book_collector.fetch_order_book(SYMBOL)
         if not order_book_data or not isinstance(order_book_data, dict):
@@ -178,6 +184,7 @@ def analyze_order_book():
         logger.error(f"Error analyzing order book: {e}")
 
 def execute_ai_trading():
+    """Execute AI-based trading using self-learning predictions."""
     try:
         historical_data = api.get_recent_trades(SYMBOL)
         if historical_data:
@@ -196,6 +203,7 @@ def execute_ai_trading():
         logger.error(f"Error in AI trading: {e}")
 
 def generate_report():
+    """Generate trading performance reports."""
     try:
         profit_tracker.generate_report()
         strategy_report.generate_strategy_report()
@@ -203,6 +211,7 @@ def generate_report():
         logger.error(f"Error generating report: {e}")
 
 def trading_loop():
+    """Main trading loop that runs continuously."""
     while True:
         try:
             logger.info("Checking market conditions and executing trade...")
