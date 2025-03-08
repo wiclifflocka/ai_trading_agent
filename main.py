@@ -61,6 +61,7 @@ API_SECRET = '6OhCdDGX7JQGePrqWd5Axl2q7k5SPNccprtH'
 SYMBOL = 'BTCUSDT'
 RISK_PERCENTAGE = 1  # Risk 1% of balance per trade
 DATA_DIR = 'data'
+MAX_LEVERAGE = 10  # Maximum allowed leverage
 
 # Ensure data directory exists
 if not os.path.exists(DATA_DIR):
@@ -71,16 +72,23 @@ if not os.path.exists(DATA_DIR):
 client = BybitClient(API_KEY, API_SECRET, testnet=True)
 api = BybitAPI(API_KEY, API_SECRET, testnet=True)
 
-# Initialize Components
+# Fetch initial balance
+initial_balance = client.get_balance()
+if initial_balance is None or not isinstance(initial_balance, (int, float)):
+    logger.error("Failed to fetch initial balance. Exiting.")
+    exit(1)
+logger.info(f"Initial balance: {initial_balance} USD")
+
+# Initialize Components with initial_balance
 order_book_analysis = OrderBookAnalysis(api, symbol=SYMBOL)
-risk_manager = RiskManagement(client, account_balance=10000)  # Will be updated dynamically
-max_drawdown = MaxDrawdown(client, initial_balance=10000)    # Will use current balance
+risk_manager = RiskManagement(client, account_balance=initial_balance)
+max_drawdown = MaxDrawdown(client, initial_balance=initial_balance)
 stop_loss_take_profit = StopLossTakeProfit(client)
-max_loss = MaxLossPerTrade(client, account_balance=10000)    # Will use current balance
+max_loss = MaxLossPerTrade(client, account_balance=initial_balance)
 leverage_control = LeverageControl(client)
 trailing_stop_loss = TrailingStopLoss(client)
 symbols = ["BTCUSDT", "ETHUSDT", "XRPUSDT"]
-market_insights = MarketInsights(client, symbols)
+market_insights = MarketInsights(client, symbols)  # Instance variable
 ofi_analysis = OFIAnalysis(api, symbol=SYMBOL)
 iceberg_detector = IcebergDetector(api)
 stop_hunt_detector = StopHuntDetector(api)
@@ -95,28 +103,30 @@ profit_tracker = ProfitTracker(api, SYMBOL)
 strategy_report = StrategyReport(client=client)
 
 def check_risk_management() -> bool:
-    """
-    Check risk management conditions before trading.
-
-    Returns:
-        bool: True if trading can proceed, False otherwise
-    """
     try:
         current_balance = client.get_balance()
         if current_balance is None or not isinstance(current_balance, (int, float)):
-            logger.error(f"Invalid balance received: {current_balance}. Assuming fallback balance.")
-            current_balance = 10000  # Fallback to initial balance
-        else:
-            logger.info(f"Fetched current balance: {current_balance} USD")
+            logger.error(f"Failed to fetch current balance: {current_balance}. Stopping trading.")
+            return False
+        logger.info(f"Fetched current balance: {current_balance} USD")
 
-        # Update risk management components with current balance
         risk_manager.account_balance = current_balance
         max_loss.account_balance = current_balance
 
         if max_drawdown.check_drawdown(current_balance):
             logger.warning("Max Drawdown Exceeded, stopping trading!")
             return False
+
         leverage_control.check_and_set_leverage(SYMBOL)
+        leverage = client.get_leverage(SYMBOL)
+        if leverage is None:
+            logger.error("Failed to fetch leverage, skipping trade execution.")
+            return False
+        if leverage > MAX_LEVERAGE:
+            logger.warning(f"Leverage {leverage}x exceeds maximum allowed {MAX_LEVERAGE}x")
+            leverage_control.set_leverage(SYMBOL, MAX_LEVERAGE)
+            logger.info(f"Leverage adjusted to {MAX_LEVERAGE}x")
+
         max_loss_value = max_loss.calculate_max_loss()
         logger.info(f"Maximum allowed loss per trade: {max_loss_value}")
         return True
@@ -125,30 +135,33 @@ def check_risk_management() -> bool:
         return False
 
 def execute_trade():
-    """Execute a trade based on market analysis and risk management."""
     if not check_risk_management():
         return
 
-    market_analysis = market_insights.analyze_market().get(SYMBOL, {})
-    strategy_switcher.switch_strategy_based_on_market_conditions(SYMBOL)
-    position_size = risk_manager.calculate_position_size(RISK_PERCENTAGE)
-    logger.info(f"Calculated position size: {position_size}")
+    try:
+        market_analysis = market_insights.analyze_market().get(SYMBOL, {})  # Use instance variable
+        strategy_switcher.switch_strategy_based_on_market_conditions(SYMBOL)
+        position_size = risk_manager.calculate_position_size(RISK_PERCENTAGE)
+        logger.info(f"Calculated position size: {position_size}")
 
-    entry_price = market_analysis.get('entry_price')
-    stop_loss_percentage = market_analysis.get('stop_loss_percentage')
-    take_profit_percentage = market_analysis.get('take_profit_percentage')
+        entry_price = market_analysis.get('entry_price')
+        stop_loss_percentage = market_analysis.get('stop_loss_percentage')
+        take_profit_percentage = market_analysis.get('take_profit_percentage')
 
-    if entry_price and stop_loss_percentage and take_profit_percentage:
-        stop_loss_take_profit.place_stop_loss(SYMBOL, entry_price, stop_loss_percentage)
-        stop_loss_take_profit.place_take_profit(SYMBOL, entry_price, take_profit_percentage)
-        logger.info(f"Placing trade with {position_size} units of {SYMBOL}")
-        api.place_order(SYMBOL, "Buy", position_size)
-        trailing_stop_loss.place_trailing_stop(SYMBOL, entry_price, trail_percentage=1.5)
-    else:
-        logger.warning("Incomplete market analysis data, skipping trade.")
+        if entry_price and stop_loss_percentage and take_profit_percentage:
+            stop_loss_take_profit.place_stop_loss(SYMBOL, entry_price, stop_loss_percentage)
+            stop_loss_take_profit.place_take_profit(SYMBOL, entry_price, take_profit_percentage)
+            logger.info(f"Placing trade with {position_size} units of {SYMBOL}")
+            api.place_order(SYMBOL, "Buy", position_size)
+            trailing_stop_loss.place_trailing_stop(SYMBOL, entry_price, trail_percentage=1.5)
+        else:
+            logger.warning("Incomplete market analysis data, skipping trade.")
+
+        strategy_switcher.execute()
+    except Exception as e:
+        logger.error(f"Error in execute_trade: {e}")
 
 def analyze_order_book():
-    """Analyze the order book and detect trading signals."""
     try:
         order_book_data = order_book_collector.fetch_order_book(SYMBOL)
         if not order_book_data or not isinstance(order_book_data, dict):
@@ -161,15 +174,10 @@ def analyze_order_book():
         ofi_result = ofi_analysis.compute_order_flow_imbalance()
         if ofi_result is not None:
             logger.info(f"OFI from OFIAnalysis: {ofi_result}")
-
-        # Skip detectors until their input requirements are clarified
-        # iceberg_detector.detect_iceberg_orders(order_book_data)
-        # stop_hunt_detector.detect_stop_hunts()
     except Exception as e:
         logger.error(f"Error analyzing order book: {e}")
 
 def execute_ai_trading():
-    """Execute AI-based trading strategies."""
     try:
         historical_data = api.get_recent_trades(SYMBOL)
         if historical_data:
@@ -188,7 +196,6 @@ def execute_ai_trading():
         logger.error(f"Error in AI trading: {e}")
 
 def generate_report():
-    """Generate trading performance reports."""
     try:
         profit_tracker.generate_report()
         strategy_report.generate_strategy_report()
@@ -196,7 +203,6 @@ def generate_report():
         logger.error(f"Error generating report: {e}")
 
 def trading_loop():
-    """Main trading loop."""
     while True:
         try:
             logger.info("Checking market conditions and executing trade...")

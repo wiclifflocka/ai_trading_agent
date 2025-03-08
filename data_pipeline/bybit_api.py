@@ -9,8 +9,8 @@ import time
 import logging
 from pybit.unified_trading import HTTP
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Set up logging with timestamps
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class BybitAPI:
@@ -28,6 +28,7 @@ class BybitAPI:
             api_key=api_key,
             api_secret=api_secret
         )
+        logger.info("BybitAPI initialized")
 
     def get_btc_price(self) -> float | None:
         """
@@ -45,22 +46,26 @@ class BybitAPI:
             logger.error(f"Error fetching BTC price: {e}")
             return None
 
-    def get_recent_trades(self, symbol: str) -> list:
+    def get_recent_trades(self, symbol: str, limit: int = 10) -> list:
         """
         Fetch recent trading records for a symbol.
 
         Args:
             symbol (str): Trading pair (e.g., "BTCUSDT")
+            limit (int): Number of trades to fetch (default: 10)
 
         Returns:
             list: List of recent trades if successful, empty list otherwise
         """
         try:
-            response = self.client.get_recent_trades(category="linear", symbol=symbol, limit=10)
-            if response and "result" in response and "list" in response["result"]:
-                return response["result"]["list"]
-            logger.error(f"Invalid response for recent trades: {response}")
-            return []
+            response = self.client.get_public_trade(
+                category="linear",
+                symbol=symbol,
+                limit=limit
+            )
+            trades = response.get("result", {}).get("list", [])
+            logger.info(f"Fetched {len(trades)} recent trades for {symbol}")
+            return trades
         except Exception as e:
             logger.error(f"Error fetching recent trades for {symbol}: {e}")
             return []
@@ -77,7 +82,9 @@ class BybitAPI:
         """
         try:
             response = self.client.get_positions(category="linear", symbol=symbol)
-            return response["result"]["list"]
+            positions = response["result"]["list"]
+            logger.info(f"Fetched {len(positions)} open positions for {symbol}")
+            return positions
         except Exception as e:
             logger.error(f"Error fetching positions for {symbol}: {e}")
             return []
@@ -98,9 +105,9 @@ class BybitAPI:
                     category="linear",
                     symbol=symbol,
                     side="Sell" if position["side"] == "Buy" else "Buy",
-                    order_type="Market",
+                    orderType="Market",
                     qty=str(position["size"]),
-                    reduce_only=True
+                    reduceOnly=True
                 )
                 logger.info(f"Close Position Response: {close_order}")
             except Exception as e:
@@ -122,12 +129,14 @@ class BybitAPI:
                 category="linear",
                 symbol=symbol,
                 side=side.capitalize(),
-                order_type="Market",
+                orderType="Market",
                 qty=str(qty)
             )
             logger.info(f"Order placed successfully: {response}")
+            return response
         except Exception as e:
             logger.error(f"Error placing order for {symbol}: {e}")
+            raise
 
     def get_order_book(self, symbol: str) -> dict | None:
         """
@@ -143,10 +152,12 @@ class BybitAPI:
             response = self.client.get_orderbook(category="linear", symbol=symbol, limit=5)
             if response and 'result' in response:
                 result = response['result']
-                return {
+                order_book = {
                     'bids': [(str(bid[0]), str(bid[1])) for bid in result['b']],
                     'asks': [(str(ask[0]), str(ask[1])) for ask in result['a']]
                 }
+                logger.info(f"Fetched order book for {symbol}")
+                return order_book
             logger.error(f"Failed to fetch order book data for {symbol}: Invalid response")
             return None
         except Exception as e:
@@ -172,14 +183,16 @@ class BybitAPI:
                 interval=interval,
                 limit=limit
             )
-            return response["result"]["list"]
+            data = response["result"]["list"]
+            logger.info(f"Fetched {len(data)} historical data points for {symbol}")
+            return data
         except Exception as e:
             logger.error(f"Error fetching historical data for {symbol}: {e}")
             return []
 
 def main():
-    api_key = "your_api_key_here"  # Replace with actual key
-    api_secret = "your_api_secret_here"  # Replace with actual secret
+    api_key = "05EqRWk80CvjiSto64"
+    api_secret = "6OhCdDGX7JQGePrqWd5Axl2q7k5SPNccprtH"
     bybit_api = BybitAPI(api_key, api_secret, testnet=True)
 
     price = bybit_api.get_btc_price()

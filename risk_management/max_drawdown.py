@@ -1,33 +1,51 @@
 # risk_management/max_drawdown.py
-from __future__ import annotations
 import logging
 logger = logging.getLogger(__name__)
 
-
 class MaxDrawdown:
-    def __init__(self, client: BybitClient, initial_balance):
+    def __init__(self, client, initial_balance: float):
+        """
+        Initialize the MaxDrawdown monitor.
+        
+        :param client: BybitClient instance (for future use)
+        :param initial_balance: The starting balance of the account
+        """
         self.client = client
-        self.initial_balance = initial_balance
-        self.max_drawdown_threshold = 0.2  # e.g., 20% max drawdown
+        self.peak_balance = initial_balance  # Set peak balance to initial balance
+        self.max_drawdown_threshold = 0.2  # 20% max drawdown threshold
 
-    def calculate_drawdown(self, current_balance):
+    def update_peak_balance(self, current_balance: float) -> None:
         """
-        Calculates the drawdown based on the current balance.
+        Update the peak balance if the current balance exceeds it.
+        
         :param current_balance: Current balance of the account
-        :return: The drawdown percentage
         """
-        drawdown = (self.initial_balance - current_balance) / self.initial_balance
-        return drawdown
+        if current_balance > self.peak_balance:
+            self.peak_balance = current_balance
 
-    def check_drawdown(self, current_balance):
+    def calculate_drawdown(self, current_balance: float) -> float:
         """
-        Checks if the current drawdown exceeds the threshold.
+        Calculate the drawdown based on the peak balance.
+        
+        :param current_balance: Current balance of the account
+        :return: Drawdown percentage (0 to 1), or 0 if peak_balance is invalid
+        """
+        if self.peak_balance <= 0:
+            logger.warning("Peak balance is zero or negative, returning drawdown as 0")
+            return 0
+        drawdown = (self.peak_balance - current_balance) / self.peak_balance
+        return max(drawdown, 0)  # Ensure drawdown is non-negative
+
+    def check_drawdown(self, current_balance: float) -> bool:
+        """
+        Check if the current drawdown exceeds the threshold.
+        
         :param current_balance: Current balance of the account
         :return: True if drawdown exceeds threshold, False otherwise
         """
+        self.update_peak_balance(current_balance)
         drawdown = self.calculate_drawdown(current_balance)
         if drawdown >= self.max_drawdown_threshold:
             logger.warning(f"Max Drawdown Exceeded: {drawdown*100:.2f}%")
             return True
         return False
-
