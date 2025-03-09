@@ -1,6 +1,6 @@
 import numpy as np
 from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.layers import Input, LSTM, Dense, Dropout
 from data_pipeline.bybit_api import BybitAPI
 import logging
 import os
@@ -10,10 +10,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 class SelfLearning:
-    def __init__(self, api: BybitAPI, model_path: str = "trading_model.h5", sequence_length: int = 10):
+    def __init__(self, api: BybitAPI, model_path: str = "trading_model.keras", sequence_length: int = 10):
         """
         Initialize the SelfLearning class.
-        
+
         Args:
             api (BybitAPI): Instance of BybitAPI for fetching data.
             model_path (str): Path to save/load the model.
@@ -24,7 +24,7 @@ class SelfLearning:
         self.sequence_length = sequence_length
         self.feature_means = None
         self.feature_stds = None
-        
+
         # Load existing model if available, otherwise build a new one
         if os.path.exists(model_path):
             self.model = load_model(model_path)
@@ -36,12 +36,13 @@ class SelfLearning:
     def build_model(self) -> Sequential:
         """
         Build and return an LSTM model for predicting the next close price.
-        
+
         Returns:
             Sequential: Compiled Keras model.
         """
         model = Sequential([
-            LSTM(64, return_sequences=True, input_shape=(self.sequence_length, 5)),
+            Input(shape=(self.sequence_length, 5)),  # Define input shape using Input layer
+            LSTM(64, return_sequences=True),
             Dropout(0.2),  # Prevent overfitting
             LSTM(32),
             Dropout(0.2),
@@ -54,10 +55,10 @@ class SelfLearning:
     def normalize_data(self, data: np.ndarray) -> np.ndarray:
         """
         Normalize the input data using mean and standard deviation.
-        
+
         Args:
             data (np.ndarray): Array of shape (n_samples, n_features).
-        
+
         Returns:
             np.ndarray: Normalized data.
         """
@@ -69,10 +70,10 @@ class SelfLearning:
     def prepare_data(self, data: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """
         Prepare sequences of data for training.
-        
+
         Args:
             data (np.ndarray): Array of shape (n_timesteps, n_features).
-        
+
         Returns:
             tuple: (X, y) where X is input sequences and y is target close prices.
         """
@@ -90,7 +91,7 @@ class SelfLearning:
     def train(self, data: np.ndarray, epochs: int = 10, batch_size: int = 32):
         """
         Train the model on historical data.
-        
+
         Args:
             data (np.ndarray): Historical data with shape (n_timesteps, 5).
             epochs (int): Number of training epochs.
@@ -102,18 +103,18 @@ class SelfLearning:
             return
 
         self.model.fit(X, y, epochs=epochs, batch_size=batch_size, verbose=0)
-        self.model.save(self.model_path)
+        self.model.save(self.model_path, save_format='keras_v3')  # Use native Keras format
         logger.info("Model trained and saved to %s", self.model_path)
 
     def predict_action(self, state: np.ndarray, buy_threshold: float = 0.01, sell_threshold: float = 0.01) -> str:
         """
         Predict the next trading action based on the current state.
-        
+
         Args:
             state (np.ndarray): Recent data with shape (n_timesteps, 5).
             buy_threshold (float): Percentage increase to trigger BUY.
             sell_threshold (float): Percentage decrease to trigger SELL.
-        
+
         Returns:
             str: "BUY", "SELL", or "HOLD".
         """
@@ -124,7 +125,7 @@ class SelfLearning:
         normalized_state = self.normalize_data(state)
         X = np.array([normalized_state[-self.sequence_length:]])
         predicted_normalized_price = self.model.predict(X, verbose=0)[0][0]
-        
+
         # Denormalize the prediction
         predicted_price = predicted_normalized_price * self.feature_stds[3] + self.feature_means[3]
         current_price = state[-1][3]  # Close price
@@ -140,7 +141,7 @@ class SelfLearning:
     def update_model(self, new_data: np.ndarray):
         """
         Incrementally update the model with new data.
-        
+
         Args:
             new_data (np.ndarray): New data to incorporate.
         """
