@@ -41,12 +41,12 @@ class SelfLearning:
             Sequential: Compiled Keras model.
         """
         model = Sequential([
-            Input(shape=(self.sequence_length, 5)),  # Define input shape using Input layer
-            LSTM(64, return_sequences=True),
-            Dropout(0.2),  # Prevent overfitting
-            LSTM(32),
+            Input(shape=(self.sequence_length, 5)),  # OHLCV: 5 features
+            LSTM(128, return_sequences=True),
             Dropout(0.2),
-            Dense(16, activation='relu'),
+            LSTM(64),
+            Dropout(0.2),
+            Dense(32, activation='relu'),
             Dense(1)  # Predict next close price
         ])
         model.compile(optimizer='adam', loss='mse')
@@ -65,7 +65,10 @@ class SelfLearning:
         if self.feature_means is None or self.feature_stds is None:
             self.feature_means = np.mean(data, axis=0)
             self.feature_stds = np.std(data, axis=0) + 1e-8  # Avoid division by zero
-        return (data - self.feature_means) / self.feature_stds
+            logger.debug(f"Feature means: {self.feature_means}, Feature stds: {self.feature_stds}")
+        normalized_data = (data - self.feature_means) / self.feature_stds
+        logger.debug(f"Sample normalized data: {normalized_data[-1]}")  # Log last row
+        return normalized_data
 
     def prepare_data(self, data: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -88,13 +91,13 @@ class SelfLearning:
             y.append(normalized_data[i + self.sequence_length][3])  # Close price
         return np.array(X), np.array(y)
 
-    def train(self, data: np.ndarray, epochs: int = 10, batch_size: int = 32):
+    def train(self, data: np.ndarray, epochs: int = 50, batch_size: int = 32):
         """
         Train the model on historical data.
 
         Args:
             data (np.ndarray): Historical data with shape (n_timesteps, 5).
-            epochs (int): Number of training epochs.
+            epochs (int): Number of training epochs (increased to 50).
             batch_size (int): Batch size for training.
         """
         X, y = self.prepare_data(data)
@@ -102,11 +105,13 @@ class SelfLearning:
             logger.warning("No valid sequences for training.")
             return
 
-        self.model.fit(X, y, epochs=epochs, batch_size=batch_size, verbose=0)
+        logger.debug(f"Training with X shape: {X.shape}, y shape: {y.shape}")
+        history = self.model.fit(X, y, epochs=epochs, batch_size=batch_size, verbose=0)
+        logger.debug(f"Training loss: {history.history['loss'][-1]}")
         self.model.save(self.model_path, save_format='keras_v3')  # Use native Keras format
         logger.info("Model trained and saved to %s", self.model_path)
 
-    def predict_action(self, state: np.ndarray, buy_threshold: float = 0.01, sell_threshold: float = 0.01) -> str:
+    def predict_action(self, state: np.ndarray, buy_threshold: float = 0.001, sell_threshold: float = 0.001) -> str:
         """
         Predict the next trading action based on the current state.
 
@@ -131,11 +136,16 @@ class SelfLearning:
         current_price = state[-1][3]  # Close price
 
         price_change = (predicted_price - current_price) / current_price
+        logger.debug(f"Current price: {current_price}, Predicted price: {predicted_price}, Price change: {price_change}")
+
         if price_change > buy_threshold:
+            logger.info(f"Price change {price_change} > {buy_threshold}, triggering BUY")
             return "BUY"
         elif price_change < -sell_threshold:
+            logger.info(f"Price change {price_change} < {-sell_threshold}, triggering SELL")
             return "SELL"
         else:
+            logger.info(f"Price change {price_change} within thresholds, holding")
             return "HOLD"
 
     def update_model(self, new_data: np.ndarray):

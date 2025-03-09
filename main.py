@@ -1,229 +1,249 @@
-# main.py
-"""
-Main Trading Agent Script
-
-Orchestrates trading strategies, risk management, and reporting for the AI trading system
-"""
-
-import time
 import logging
+import time
 import os
-
-# Suppress TensorFlow oneDNN messages and set log level
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-# Bybit API and Client
-from bybit_client import BybitClient
+import numpy as np
 from data_pipeline.bybit_api import BybitAPI
-
-# AI & Self-Learning
 from ai.self_learning import SelfLearning
 
-# Risk Management Modules
-from risk_management.position_sizing import RiskManagement
-from risk_management.max_drawdown import MaxDrawdown
-from risk_management.stop_loss_take_profit import StopLossTakeProfit
-from risk_management.max_loss import MaxLossPerTrade
-from risk_management.leverage_control import LeverageControl
-from risk_management.trailing_stop import TrailingStopLoss
-
-# Market Insights & Order Book Analysis
-from market_insights.market_analysis import MarketInsights
-from analysis.order_book_analysis import OrderBookAnalysis
-from analysis.ofi_analysis import OFIAnalysis
-from analysis.iceberg_detector import IcebergDetector
-from analysis.stop_hunt_detector import StopHuntDetector
-
-# Data Collection
-from data_pipeline.order_book_collector import OrderBookCollector
-
-# Execution Strategies
-from execution.hft_trading import HFTTrading
-from execution.market_maker import MarketMaker
-from execution.scalping_strategy import ScalpingStrategy
-
-# Trading Strategy
-from strategies.trading_strategy import TradingStrategy
-from strategies.strategy_switcher import StrategySwitcher
-
-# Tracking & Reporting
-from tracking.profit_tracker import ProfitTracker
-from tracking.strategy_report import StrategyReport
-
-# Setting up logging with timestamps
+# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Configuration Variables
-API_KEY = '05EqRWk80CvjiSto64'
-API_SECRET = '6OhCdDGX7JQGePrqWd5Axl2q7k5SPNccprtH'
-SYMBOL = 'BTCUSDT'
-RISK_PERCENTAGE = 1  # Risk 1% of balance per trade
+SYMBOL = "BTCUSDT"  # Trading pair for linear perpetual futures
+API_KEY = "05EqRWk80CvjiSto64"  # Replace with your actual API key
+API_SECRET = "6OhCdDGX7JQGePrqWd5Axl2q7k5SPNccprtH"  # Replace with your actual API secret
+TESTNET = True  # Set to False for mainnet
+MODEL_PATH = "trading_model.keras"  # Path to save/load the model
 DATA_DIR = 'data'
-MAX_LEVERAGE = 10  # Maximum allowed leverage
+RISK_PERCENTAGE = 1  # Risk 1% of balance per trade as margin
+MAX_LEVERAGE_CAP = 100  # Maximum allowable leverage (Bybit's limit for BTCUSDT)
+KLINE_INTERVAL = "1"  # Kline interval (e.g., '1', '5', '60', 'D')
+MIN_ORDER_QTY = 0.001  # Minimum order quantity for BTCUSDT linear perpetual
+QTY_PRECISION = 3  # Precision for quantity (e.g., 0.001 BTC)
+BUY_THRESHOLD = 0.001  # 0.1% price increase to buy
+SELL_THRESHOLD = 0.001  # 0.1% price decrease to sell
 
 # Ensure data directory exists
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
     logger.info(f"Created directory: {DATA_DIR}")
 
-# Initialize Bybit Client and API
-client = BybitClient(API_KEY, API_SECRET, testnet=True)
-api = BybitAPI(API_KEY, API_SECRET, testnet=True)
+# Initialize API and Self-Learning Model
+api = BybitAPI(API_KEY, API_SECRET, testnet=TESTNET)
+self_learning = SelfLearning(api, model_path=MODEL_PATH)
 
 # Fetch initial balance
-initial_balance = client.get_balance()
-if initial_balance is None or not isinstance(initial_balance, (int, float)):
-    logger.error("Failed to fetch initial balance. Exiting.")
+initial_balance_response = api.get_balance()
+if initial_balance_response is None or 'result' not in initial_balance_response or 'list' not in initial_balance_response['result']:
+    logger.error("Failed to fetch initial balance. Response: %s", initial_balance_response)
     exit(1)
-logger.info(f"Initial balance: {initial_balance} USD")
+try:
+    initial_balance = float(initial_balance_response['result']['list'][0]['totalAvailableBalance'])
+    logger.info(f"Initial balance: {initial_balance:.2f} USDT")
+except (KeyError, ValueError, TypeError) as e:
+    logger.error("Error parsing initial balance: %s. Response: %s", e, initial_balance_response)
+    exit(1)
 
-# Initialize Components with initial_balance
-order_book_analysis = OrderBookAnalysis(api, symbol=SYMBOL)
-risk_manager = RiskManagement(client, account_balance=initial_balance)
-max_drawdown = MaxDrawdown(client, initial_balance=initial_balance)
-stop_loss_take_profit = StopLossTakeProfit(client)
-max_loss = MaxLossPerTrade(client, account_balance=initial_balance)
-leverage_control = LeverageControl(client)
-trailing_stop_loss = TrailingStopLoss(client)
-symbols = ["BTCUSDT", "ETHUSDT", "XRPUSDT"]
-market_insights = MarketInsights(client, symbols)  # Instance variable
-ofi_analysis = OFIAnalysis(api, symbol=SYMBOL)
-iceberg_detector = IcebergDetector(api)
-stop_hunt_detector = StopHuntDetector(api)
-self_learning = SelfLearning(api)
-order_book_collector = OrderBookCollector(api)
-hft_trading = HFTTrading(api)
-market_maker = MarketMaker(api)
-scalping_strategy = ScalpingStrategy(api)
-strategy_switcher = StrategySwitcher(client)
-trading_strategy = TradingStrategy(client)
-profit_tracker = ProfitTracker(api, SYMBOL)
-strategy_report = StrategyReport(client=client)
-
-def check_risk_management() -> bool:
+def fetch_historical_data() -> np.ndarray:
     """
-    Check risk management conditions before executing trades.
-    Returns True if all checks pass, False otherwise.
+    Fetch and format historical Kline data from Bybit for futures trading.
+
+    Returns:
+        np.ndarray: Array of shape (n_timesteps, 5) with [open, high, low, close, volume].
     """
     try:
-        current_balance = client.get_balance()
-        if current_balance is None or not isinstance(current_balance, (int, float)):
-            logger.error(f"Failed to fetch current balance: {current_balance}. Stopping trading.")
-            return False
-        logger.info(f"Fetched current balance: {current_balance} USD")
-
-        risk_manager.account_balance = current_balance
-        max_loss.account_balance = current_balance
-
-        if max_drawdown.check_drawdown(current_balance):
-            logger.warning("Max Drawdown Exceeded, stopping trading!")
-            return False
-
-        leverage_control.check_and_set_leverage(SYMBOL)
-        leverage = client.get_leverage(SYMBOL)
-        if leverage is None:
-            logger.error("Failed to fetch leverage, skipping trade execution.")
-            return False
-        if leverage > MAX_LEVERAGE:
-            logger.warning(f"Leverage {leverage}x exceeds maximum allowed {MAX_LEVERAGE}x")
-            leverage_control.set_leverage(SYMBOL, MAX_LEVERAGE)
-            logger.info(f"Leverage adjusted to {MAX_LEVERAGE}x")
-
-        max_loss_value = max_loss.calculate_max_loss()
-        logger.info(f"Maximum allowed loss per trade: {max_loss_value}")
-        return True
+        data = api.get_historical_klines(symbol=SYMBOL, interval=KLINE_INTERVAL, limit=500)  # Increased to 500
+        if not data or 'result' not in data or 'list' not in data['result']:
+            logger.warning("No historical Kline data fetched.")
+            return np.array([])
+        kline_data = data['result']['list']  # Access nested 'list' under 'result'
+        formatted_data = []
+        for k in kline_data:
+            if len(k) < 6:
+                logger.warning(f"Invalid Kline data entry: {k}")
+                continue
+            try:
+                formatted_data.append([
+                    float(k[1]),  # open
+                    float(k[2]),  # high
+                    float(k[3]),  # low
+                    float(k[4]),  # close
+                    float(k[5])   # volume
+                ])
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Error converting Kline data entry {k}: {e}")
+                continue
+        if not formatted_data:
+            logger.warning("No valid Kline data entries after processing.")
+            return np.array([])
+        return np.array(formatted_data)[::-1]  # Reverse to chronological order
     except Exception as e:
-        logger.error(f"Error in risk management: {e}")
-        return False
+        logger.error(f"Error fetching historical data: {e}")
+        return np.array([])
 
-def execute_trade():
-    """Execute a trade based on market analysis and risk management."""
-    if not check_risk_management():
-        return
+def get_current_balance() -> float:
+    """
+    Fetch the current available USDT balance for trading.
 
+    Returns:
+        float: Available USDT balance, or 0.0 on error.
+    """
     try:
-        market_analysis = market_insights.analyze_market().get(SYMBOL, {})  # Use instance variable
-        strategy_switcher.switch_strategy_based_on_market_conditions(SYMBOL)
-        position_size = risk_manager.calculate_position_size(RISK_PERCENTAGE)
-        logger.info(f"Calculated position size: {position_size}")
-
-        entry_price = market_analysis.get('entry_price')
-        stop_loss_percentage = market_analysis.get('stop_loss_percentage')
-        take_profit_percentage = market_analysis.get('take_profit_percentage')
-
-        if entry_price and stop_loss_percentage and take_profit_percentage:
-            stop_loss_take_profit.place_stop_loss(SYMBOL, entry_price, stop_loss_percentage)
-            stop_loss_take_profit.place_take_profit(SYMBOL, entry_price, take_profit_percentage)
-            logger.info(f"Placing trade with {position_size} units of {SYMBOL}")
-            api.place_order(SYMBOL, "Buy", position_size)
-            trailing_stop_loss.place_trailing_stop(SYMBOL, entry_price, trail_percentage=1.5)
-        else:
-            logger.warning("Incomplete market analysis data, skipping trade.")
-
-        strategy_switcher.execute()
+        balance_info = api.get_balance()
+        if balance_info is None or 'result' not in balance_info or 'list' not in balance_info['result']:
+            logger.error("Failed to fetch current balance. Response: %s", balance_info)
+            return 0.0
+        total_available_balance = float(balance_info['result']['list'][0]['totalAvailableBalance'])
+        logger.info(f"Current available USDT balance: {total_available_balance:.2f}")
+        return total_available_balance
+    except (KeyError, ValueError, TypeError) as e:
+        logger.error(f"Error parsing current balance: %s. Response: %s", e, balance_info)
+        return 0.0
     except Exception as e:
-        logger.error(f"Error in execute_trade: {e}")
+        logger.error(f"Error fetching current balance: %s", e)
+        return 0.0
 
-def analyze_order_book():
-    """Analyze the order book for market insights."""
+def get_position() -> tuple[float, str]:
+    """
+    Fetch the current position for the trading symbol.
+
+    Returns:
+        tuple: (size, side) where size is the position size and side is "Buy", "Sell", or None.
+    """
     try:
-        order_book_data = order_book_collector.fetch_order_book(SYMBOL)
-        if not order_book_data or not isinstance(order_book_data, dict):
-            logger.warning("Invalid or no order book data received.")
-            return
-
-        ofi = order_book_analysis.calculate_order_flow_imbalance()
-        if ofi is not None:
-            logger.info(f"OFI: {ofi}")
-        ofi_result = ofi_analysis.compute_order_flow_imbalance()
-        if ofi_result is not None:
-            logger.info(f"OFI from OFIAnalysis: {ofi_result}")
+        position_info = api.get_position(SYMBOL)
+        if position_info['status'] == 'success':
+            return position_info['size'], position_info['side']
+        logger.error(f"Failed to fetch position: {position_info.get('message')}")
+        return 0.0, None
     except Exception as e:
-        logger.error(f"Error analyzing order book: {e}")
+        logger.error(f"Error fetching position: {e}")
+        return 0.0, None
+
+def calculate_leverage(balance: float, price: float, risk_percentage: float = RISK_PERCENTAGE) -> int:
+    """
+    Calculate dynamic leverage based on account balance and current price.
+
+    Args:
+        balance (float): Current available USDT balance.
+        price (float): Current price of the asset (e.g., BTC price in USDT).
+        risk_percentage (float): Percentage of balance to risk per trade.
+
+    Returns:
+        int: Calculated leverage, capped at MAX_LEVERAGE_CAP.
+    """
+    if balance <= 0 or price <= 0:
+        logger.error("Invalid balance or price for leverage calculation.")
+        return 1  # Default to minimum leverage
+
+    risk_amount = balance * (risk_percentage / 100)
+    position_value = price * MIN_ORDER_QTY
+    required_leverage = position_value / risk_amount
+
+    leverage = max(1, min(int(required_leverage), MAX_LEVERAGE_CAP))
+    logger.info(f"Calculated leverage: {leverage}x for balance {balance:.2f} USDT and price {price:.2f}")
+    return leverage
+
+def calculate_quantity(price: float, balance: float, leverage: int) -> float:
+    """
+    Calculate the trade quantity for futures trading based on leverage and risk.
+
+    Args:
+        price (float): Current price of the asset (e.g., BTC price in USDT).
+        balance (float): Current available USDT balance.
+        leverage (int): Leverage to use for the trade.
+
+    Returns:
+        float: Quantity to trade, or 0 if insufficient balance.
+    """
+    risk_amount = balance * (RISK_PERCENTAGE / 100)  # Margin in USDT
+    if risk_amount > balance:
+        logger.warning(f"Risk amount ({risk_amount:.2f}) exceeds available balance ({balance:.2f}).")
+        return 0.0
+    qty = (risk_amount * leverage) / price  # Quantity in BTC
+    qty = max(qty, MIN_ORDER_QTY)  # Ensure minimum order quantity
+    return round(qty, QTY_PRECISION)
 
 def execute_ai_trading():
-    """Execute AI-based trading using self-learning predictions."""
+    """Execute AI-based trading using self-learning predictions with dynamic leverage."""
+    leverage_set = False
+    current_leverage = None
+
     try:
-        historical_data = api.get_recent_trades(SYMBOL)
-        if historical_data:
-            self_learning.train(historical_data)
-            state = None  # Placeholder; replace with actual state preparation if needed
-            prediction = self_learning.predict_action(state)
-            if prediction == "BUY":
-                hft_trading.execute_trade(SYMBOL, "BUY")
-            elif prediction == "SELL":
-                market_maker.place_orders()
+        historical_data = fetch_historical_data()
+        if historical_data.size == 0:
+            logger.warning(f"No recent Kline data for {SYMBOL}")
+            return
+
+        # Train the model
+        self_learning.train(historical_data)
+        state = historical_data[-self_learning.sequence_length:]
+        prediction = self_learning.predict_action(state, BUY_THRESHOLD, SELL_THRESHOLD)
+
+        if prediction not in ["BUY", "SELL"]:
+            logger.info("Holding position, no trade executed.")
+            return
+
+        # Fetch balance, price, and position
+        current_price = historical_data[-1, 3]  # Latest close price
+        balance = get_current_balance()
+        if balance <= 0:
+            logger.warning("Insufficient balance to trade.")
+            return
+        position_size, position_side = get_position()
+
+        # Set leverage once or if changed
+        leverage = calculate_leverage(balance, current_price)
+        if not leverage_set or leverage != current_leverage:
+            leverage_response = api.set_leverage(SYMBOL, leverage)
+            if leverage_response['status'] == 'success':
+                leverage_set = True
+                current_leverage = leverage
+            elif leverage_response.get('message') == "leverage not modified":
+                logger.info("Leverage already set to %d for %s", leverage, SYMBOL)
+                leverage_set = True
+                current_leverage = leverage
             else:
-                logger.info("Holding position, no trade executed.")
+                logger.error("Failed to set leverage: %s", leverage_response.get('message'))
+                return
+
+        # Execute trade based on position
+        if prediction == "BUY" and position_side != "Buy":
+            qty = calculate_quantity(current_price, balance, leverage)
+            if qty > 0:
+                logger.info(f"Executing BUY trade with quantity {qty:.3f} at price {current_price:.2f} with leverage {leverage}x.")
+                api.place_order(SYMBOL, "Buy", qty)
+            else:
+                logger.info("Skipping BUY trade due to insufficient balance or invalid quantity.")
+        elif prediction == "SELL" and position_side == "Buy":
+            qty = position_size  # Sell entire position
+            if qty > 0:
+                logger.info(f"Executing SELL trade with quantity {qty:.3f} at price {current_price:.2f} with leverage {leverage}x.")
+                api.place_order(SYMBOL, "Sell", qty)
+            else:
+                logger.info("Skipping SELL trade due to no position or invalid quantity.")
         else:
-            logger.warning(f"No recent trades data for {SYMBOL}")
+            logger.info(f"No action taken: {prediction} requested but position side is {position_side}")
+
     except Exception as e:
         logger.error(f"Error in AI trading: {e}")
 
-def generate_report():
-    """Generate trading performance reports."""
-    try:
-        profit_tracker.generate_report()
-        strategy_report.generate_strategy_report()
-    except Exception as e:
-        logger.error(f"Error generating report: {e}")
-
 def trading_loop():
     """Main trading loop that runs continuously."""
-    while True:
-        try:
-            logger.info("Checking market conditions and executing trade...")
-            analyze_order_book()
-            execute_trade()
+    try:
+        while True:
+            logger.info("Executing AI trading cycle...")
             execute_ai_trading()
-            generate_report()
-            time.sleep(10)
-        except Exception as e:
-            logger.error(f"Error during trading loop: {e}")
-            time.sleep(10)
+            time.sleep(10)  # Sleep for 10 seconds between cycles
+    except KeyboardInterrupt:
+        logger.info("Trading loop stopped by user.")
+    except Exception as e:
+        logger.error(f"Unexpected error in trading loop: {e}")
 
 if __name__ == "__main__":
-    logger.info("Starting AI Trading Agent...")
+    logger.info("Starting AI Trading Agent for Futures...")
     trading_loop()
