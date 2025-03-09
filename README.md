@@ -91,7 +91,9 @@ cd ai_trading_agent
 Install the required dependencies:
 bash
 
-pip install pybit numpy pandas keras
+pip install pybit tensorflow numpy
+
+
 
 Configuration
 Update the API_KEY and API_SECRET in main.py with your Bybit testnet API credentials:
