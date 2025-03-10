@@ -1,0 +1,21 @@
+2025-03-10 15:40:24,234 - __main__ - INFO - Loaded SYMBOL: BTCUSDT
+2025-03-10 15:40:24,239 - __main__ - INFO - Loaded API_KEY: 05EqRWk80CvjiSto64
+2025-03-10 15:40:24,239 - __main__ - INFO - Loaded API_SECRET: 6OhCdDGX7JQGePrqWd5Axl2q7k5SPNccprtH
+2025-03-10 15:40:24,239 - data_pipeline.bybit_api - INFO - BybitAPI initialized with testnet=True
+2025-03-10 15:40:24,574 - ai.self_learning - INFO - Built new model.
+2025-03-10 15:40:25,701 - data_pipeline.bybit_api - INFO - Fetched balance successfully
+2025-03-10 15:40:25,701 - __main__ - INFO - Initial balance: 837.60 USDT
+2025-03-10 15:40:25,706 - __main__ - INFO - Starting AI Trading Agent for Futures...
+2025-03-10 15:40:25,706 - __main__ - INFO - Fetching initial historical data for training...
+2025-03-10 15:40:26,849 - data_pipeline.bybit_api - INFO - Fetched historical Kline data for BTCUSDT (limit=500)
+2025-03-10 15:40:26,854 - __main__ - INFO - Updated historical data cache with 500 entries.
+2025-03-10 15:40:26,859 - __main__ - INFO - Starting model training with 500 data points...
+2025-03-10 15:41:48,315 - ai.self_learning - INFO - Model trained and saved to trading_model_advanced.keras. Train loss: 16.318789, Val loss: 32.572033
+2025-03-10 15:41:48,320 - __main__ - INFO - Starting trading cycle 1...
+2025-03-10 15:41:48,320 - __main__ - INFO - Fetching historical data...
+2025-03-10 15:41:49,535 - data_pipeline.bybit_api - INFO - Fetched historical Kline data for BTCUSDT (limit=500)
+2025-03-10 15:41:49,540 - __main__ - INFO - Updated historical data cache with 500 entries.
+2025-03-10 15:41:50,390 - data_pipeline.bybit_api - INFO - Fetched balance successfully
+2025-03-10 15:41:50,390 - __main__ - INFO - Current available USDT balance: 837.30
+2025-03-10 15:41:50,390 - __main__ - INFO - Predicting action with current price: 54853.40, volatility: 0.0246
+2025-03-10 15:41:51,160 - __main__ - INFO - Trading loop stopped by user.
