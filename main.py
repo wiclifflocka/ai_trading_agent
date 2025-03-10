@@ -1,6 +1,9 @@
 import logging
 import time
 import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 import sys
 from dotenv import load_dotenv
 from typing import Tuple, Optional
