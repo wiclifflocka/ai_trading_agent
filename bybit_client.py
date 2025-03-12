@@ -68,7 +68,7 @@ class BybitClient:
         Args:
             symbol (str): Trading pair (e.g., "BTCUSDT")
             qty (float): Order quantity
-            side (str): "Buy" or "Sell"
+            side (str "Buy" or "Sell")
             order_type (str): "Market" or "Limit" (default: "Market")
 
         Returns:
@@ -293,7 +293,7 @@ class BybitClient:
             list: List of recent trades, empty list if retrieval fails
         """
         try:
-            response = self.client.get_public_trade(
+            response = self.client.get_recent_trades(
                 category="linear",
                 symbol=symbol,
                 limit=limit
@@ -322,3 +322,6 @@ if __name__ == "__main__":
 
     historical_data = client.get_historical_data("BTCUSDT")
     print(f"Historical Data (first entry): {historical_data[0]}")
+
+    recent_trades = client.get_recent_trades("BTCUSDT")
+    print(f"Recent Trades (first entry): {recent_trades[0] if recent_trades else 'No trades'}")

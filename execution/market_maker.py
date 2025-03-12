@@ -1,73 +1,90 @@
+# execution/market_maker.py
 import time
-import numpy as np
-from data_pipeline.bybit_api import BybitAPI
-from analysis.ofi_analysis import OFIAnalysis  # Import the class instead
+import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MarketMaker:
-    def __init__(self, api: BybitAPI, symbol: str = "BTCUSDT", spread: float = 0.05, size: float = 0.01, max_position: float = 0.1):
+    def __init__(self, client, symbol: str = "BTCUSDT", spread: float = 0.05, size: float = 0.01, position_info=None, risk_components=None):
         """
-        Initializes the market-making engine.
+        Implements a market making strategy.
 
         Args:
-            api (BybitAPI): Instance of BybitAPI for placing orders and fetching data.
+            client: BybitClient instance for placing orders and fetching data.
             symbol (str): Trading pair (e.g., "BTCUSDT"). Defaults to "BTCUSDT".
             spread (float): Target bid-ask spread in percentage. Defaults to 0.05%.
             size (float): Order size in units. Defaults to 0.01.
-            max_position (float): Maximum position size to prevent excessive exposure. Defaults to 0.1.
+            position_info: Shared position info from TradingSystem.
+            risk_components: Shared risk management components from TradingSystem.
         """
-        self.api = api
+        self.client = client
         self.symbol = symbol
         self.spread = spread
         self.size = size
-        self.max_position = max_position
-        self.position = 0  # Current market exposure
-        self.ofi_analyzer = OFIAnalysis(api, symbol)  # Initialize OFIAnalysis with api and symbol
+        self.running = False
+        self.thread = None
+        self.position_info = position_info or {}
+        self.risk_components = risk_components or {}
 
-    def place_orders(self):
-        """
-        Dynamically places bid and ask orders to capture the spread.
-        """
-        book = self.api.get_order_book(self.symbol)
-        if not book or 'bids' not in book or 'asks' not in book:
-            print(f"Failed to fetch order book for {self.symbol}")
+    def start(self):
+        """Start the market making strategy thread."""
+        self.running = True
+        self.thread = threading.Thread(target=self.run)
+        self.thread.daemon = True
+        self.thread.start()
+        logger.info(f"MarketMaker started for {self.symbol}")
+
+    def run(self):
+        """Runs the market making strategy in a continuous loop."""
+        while self.running:
+            self.execute_market_making()
+            time.sleep(1)  # Adjust timing as needed
+
+    def execute_market_making(self):
+        """Places bid and ask orders around the market price."""
+        if self.position_info.get('size', 0):  # Skip if position exists
             return
 
-        best_bid = float(max(book["bids"], key=lambda x: float(x[0]))[0])
-        best_ask = float(min(book["asks"], key=lambda x: float(x[0]))[0])
+        try:
+            book = self.client.get_order_book(self.symbol)
+            if not book or 'bids' not in book or 'asks' not in book:
+                logger.warning(f"Failed to fetch order book for {self.symbol}")
+                return
 
-        # Calculate optimal bid/ask prices
-        bid_price = round(best_bid * (1 - self.spread / 100), 2)
-        ask_price = round(best_ask * (1 + self.spread / 100), 2)
+            best_bid = float(max(book["bids"], key=lambda x: float(x[0]))[0])
+            best_ask = float(min(book["asks"], key=lambda x: float(x[0]))[0])
+            mid_price = (best_bid + best_ask) / 2
 
-        # Check market order flow to adjust pricing
-        ofi = self.ofi_analyzer.compute_order_flow_imbalance()
-        if ofi is not None:
-            if ofi > 0:
-                bid_price += 0.1  # Adjust bid up if buying pressure is high
-            elif ofi < 0:
-                ask_price -= 0.1  # Adjust ask down if selling pressure is high
+            bid_price = round(mid_price * (1 - self.spread / 100), 2)
+            ask_price = round(mid_price * (1 + self.spread / 100), 2)
 
-        # Risk Management: Limit position size
-        if self.position + self.size > self.max_position:
-            print("⚠️ Position limit reached, skipping new bids")
-            return
+            # Apply risk management if available
+            if 'position_sizing' in self.risk_components:
+                size = self.risk_components['position_sizing'].calculate_position_size(self.size)
+            else:
+                size = self.size
 
-        # Place bid and ask orders
-        self.api.place_limit_order(self.symbol, "buy", bid_price, self.size)
-        self.api.place_limit_order(self.symbol, "sell", ask_price, self.size)
+            self.client.place_order(self.symbol, "Buy", size, "Limit", price=bid_price)
+            self.client.place_order(self.symbol, "Sell", size, "Limit", price=ask_price)
+            logger.info(f"Market Making: BUY @ {bid_price}, SELL @ {ask_price}")
+        except Exception as e:
+            logger.error(f"Market making execution failed: {str(e)}")
 
-        print(f"✅ Placed orders: BUY @ {bid_price}, SELL @ {ask_price}")
+    def stop(self):
+        """Stop the market making strategy thread."""
+        self.running = False
+        if self.thread and self.thread.is_alive():
+            self.thread.join()
+        logger.info(f"MarketMaker stopped for {self.symbol}")
 
-    def monitor_orders(self):
-        """
-        Continuously monitors the market and adjusts orders.
-        """
-        while True:
-            self.place_orders()
-            time.sleep(1)  # Adjust frequency as needed
-
-# Example usage
 if __name__ == "__main__":
-    api = BybitAPI()
-    maker = MarketMaker(api)
-    maker.monitor_orders()
+    from bybit_client import BybitClient
+    client = BybitClient("YOUR_API_KEY", "YOUR_API_SECRET", testnet=True)
+    mm = MarketMaker(client)
+    mm.start()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        mm.stop()

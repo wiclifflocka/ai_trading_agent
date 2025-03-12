@@ -1,23 +1,21 @@
+# analysis/market_insights/market_insights.py
 import numpy as np
-from data_pipeline.bybit_api import BybitAPI
-
-api = BybitAPI()
 
 class MarketInsights:
-    def __init__(self, client, symbols):
+    def __init__(self, client, symbols, timeframe='1m'):
         self.client = client
         self.symbols = symbols
-        print(f"MarketInsights initialized for symbols: {self.symbols}")
+        self.timeframe = timeframe
+        print(f"MarketInsights initialized for symbols: {self.symbols} with timeframe: {self.timeframe}")
 
     def analyze_market(self):
         print("Analyzing market data...")
-
 
     def get_imbalance_ratio(self):
         """
         Calculates bid-ask imbalance.
         """
-        book = api.get_order_book(self.symbol)
+        book = self.client.get_order_book(self.symbols[0])
         if not book:
             return None
 
@@ -31,7 +29,7 @@ class MarketInsights:
         """
         Identifies iceberg orders (hidden liquidity).
         """
-        trades = api.get_recent_trades(self.symbol)
+        trades = self.client.get_recent_trades(self.symbols[0])
         large_trades = [trade for trade in trades if float(trade["size"]) > 10]  # Arbitrary threshold
 
         if len(large_trades) > 5:
@@ -41,9 +39,9 @@ class MarketInsights:
         """
         Measures aggressive buying/selling.
         """
-        trades = api.get_recent_trades(self.symbol)
-        buy_vol = sum(float(t["size"]) for t in trades if t["side"] == "buy")
-        sell_vol = sum(float(t["size"]) for t in trades if t["side"] == "sell")
+        trades = self.client.get_recent_trades(self.symbols[0])
+        buy_vol = sum(float(t["size"]) for t in trades if t["side"] == "Buy")  # Capitalized "Buy"
+        sell_vol = sum(float(t["size"]) for t in trades if t["side"] == "Sell")  # Capitalized "Sell"
 
         aggression_ratio = buy_vol / (buy_vol + sell_vol) if (buy_vol + sell_vol) > 0 else 0
         return aggression_ratio
@@ -56,11 +54,12 @@ class MarketInsights:
         aggression = self.analyze_aggression()
         self.detect_iceberg_orders()
 
-        print(f"📊 **Market Insights:**")
+        print(f"📊 **Market Insights ({self.timeframe}):**")
         print(f"🔹 Order Book Imbalance: {imbalance:.4f}")
         print(f"🔹 Order Flow Aggression: {aggression:.4f}")
 
 if __name__ == "__main__":
-    insights = MarketInsights()
+    from bybit_client import BybitClient
+    client = BybitClient("YOUR_API_KEY", "YOUR_API_SECRET", testnet=True)
+    insights = MarketInsights(client, ["BTCUSDT"])
     insights.run()
-
