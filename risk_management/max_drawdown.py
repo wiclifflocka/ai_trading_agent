@@ -1,56 +1,47 @@
 # risk_management/max_drawdown.py
 import logging
+from bybit_client import BybitClient
 
 logger = logging.getLogger(__name__)
 
 class MaxDrawdown:
-    def __init__(self, client, initial_balance: float, max_drawdown: float = 0.2):
-        """
-        Initialize the MaxDrawdown monitor.
+    """
+    Monitor and enforce a maximum drawdown limit based on account balance.
 
-        :param client: BybitClient instance (for future use)
-        :param initial_balance: The starting balance of the account
-        :param max_drawdown: Maximum allowable drawdown percentage (default 20%)
-        """
+    Attributes:
+        client (BybitClient): Bybit API client instance
+        initial_balance (float): Starting balance of the account
+        max_drawdown (float): Maximum allowable drawdown percentage (default 20%)
+    """
+
+    def __init__(self, client: BybitClient, initial_balance: float, max_drawdown: float = 0.2):
         self.client = client
-        self.peak_balance = initial_balance  # Set peak balance to initial balance
-        self.max_drawdown_threshold = max_drawdown  # Configurable threshold
+        self.initial_balance = initial_balance
+        self.max_drawdown = max_drawdown
+        self.peak_balance = initial_balance
         logger.info(f"MaxDrawdown initialized: initial_balance={initial_balance}, threshold={max_drawdown}")
-
-    def update_peak_balance(self, current_balance: float) -> None:
-        """
-        Update the peak balance if the current balance exceeds it.
-
-        :param current_balance: Current balance of the account
-        """
-        if current_balance > self.peak_balance:
-            self.peak_balance = current_balance
-            logger.debug(f"Peak balance updated to {self.peak_balance}")
-
-    def calculate_drawdown(self, current_balance: float) -> float:
-        """
-        Calculate the drawdown based on the peak balance.
-
-        :param current_balance: Current balance of the account
-        :return: Drawdown percentage (0 to 1), or 0 if peak_balance is invalid
-        """
-        if self.peak_balance <= 0:
-            logger.warning("Peak balance is zero or negative, returning drawdown as 0")
-            return 0
-        drawdown = (self.peak_balance - current_balance) / self.peak_balance
-        return max(drawdown, 0)  # Ensure drawdown is non-negative
 
     def check_drawdown(self, current_balance: float) -> bool:
         """
         Check if the current drawdown is within the threshold.
 
-        :param current_balance: Current balance of the account
-        :return: True if drawdown is within threshold (safe), False if exceeded
+        Args:
+            current_balance (float): Current balance of the account
+
+        Returns:
+            bool: True if drawdown is within threshold (safe), False if exceeded
         """
-        self.update_peak_balance(current_balance)
-        drawdown = self.calculate_drawdown(current_balance)
-        logger.debug(f"Drawdown check: peak={self.peak_balance}, current={current_balance}, drawdown={drawdown:.2%}")
-        if drawdown >= self.max_drawdown_threshold:
-            logger.warning(f"Max Drawdown Exceeded: {drawdown*100:.2f}% vs threshold {self.max_drawdown_threshold*100:.2f}%")
-            return False
-        return True
+        # Update peak balance
+        self.peak_balance = max(self.peak_balance, current_balance)
+        # Calculate drawdown
+        if self.peak_balance <= 0:
+            logger.warning("Peak balance is zero or negative, returning True to avoid division by zero")
+            return True
+        drawdown = (self.peak_balance - current_balance) / self.peak_balance
+        drawdown = max(drawdown, 0)  # Ensure non-negative
+        is_within_limit = drawdown <= self.max_drawdown
+        if not is_within_limit:
+            logger.warning(f"Max Drawdown Exceeded: {drawdown:.2%} vs threshold {self.max_drawdown:.2%}")
+        else:
+            logger.debug(f"Drawdown check: peak={self.peak_balance}, current={current_balance}, drawdown={drawdown:.2%}")
+        return is_within_limit

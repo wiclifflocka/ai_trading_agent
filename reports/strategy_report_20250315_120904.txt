@@ -1,0 +1,38 @@
+
+fetch Request: bybit GET https://api-testnet.bybit.com/v5/account/wallet-balance?accountType=UNIFIED RequestHeaders: {'Content-Type': 'application/json', 'X-BAPI-API-KEY': '05EqRWk80CvjiSto64', 'X-BAPI-TIMESTAMP': '1742029743609', 'X-BAPI-RECV-WINDOW': '5000', 'X-BAPI-SIGN': '9d7b6e51c4f6101694c90e3d791c08f9b2203cb056bd110a80a72775ed5a6439', 'User-Agent': 'python-requests/2.32.3', 'Accept-Encoding': 'gzip, deflate', 'Accept': '*/*', 'Connection': 'keep-alive'} RequestBody: None
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+
+fetch Response: bybit GET https://api-testnet.bybit.com/v5/account/wallet-balance?accountType=UNIFIED 200 ResponseHeaders: {'Content-Type': 'application/json; charset=utf-8', 'Content-Length': '875', 'Connection': 'keep-alive', 'Date': 'Sat, 15 Mar 2025 09:09:03 GMT', 'x-cld-src': 'Loc-A', 'X-Bapi-Limit': '50', 'X-Bapi-Limit-Status': '49', 'X-Bapi-Limit-Reset-Timestamp': '1742029743930', 'Ret_code': '0', 'Traceid': '24a777c420547c904eba27d993834206', 'Timenow': '1742029743933', 'Server': 'Openresty', 'X-Cache': 'Miss from cloudfront', 'Via': '1.1 080b315e594e222106f588b79b9d6ca6.cloudfront.net (CloudFront)', 'X-Amz-Cf-Pop': 'NBO50-P1', 'X-Amz-Cf-Id': 'X7cqSZ3fROPlpVyhq9M7kK1afxXMqIXe_JIlgmKgHrX0wslox8POvw=='} ResponseBody: {"retCode":0,"retMsg":"OK","result":{"list":[{"totalEquity":"1901.52724563","accountIMRate":"0.0093","totalMarginBalance":"1597.28288633","totalInitialMargin":"14.88282329","accountType":"UNIFIED","totalAvailableBalance":"1582.40006303","accountMMRate":"0.0002","totalPerpUPL":"-11.38503059","totalWalletBalance":"1606.84631203","accountLTV":"0","totalMaintenanceMargin":"0.40392416","coin":[{"availableToBorrow":"","bonus":"0","accruedInterest":"0","availableToWithdraw":"","totalOrderIM":"0","equity":"1901.25156416","totalPositionMM":"0.4038656","usdValue":"1901.52724563","unrealisedPnl":"-11.38338","collateralSwitch":true,"spotHedgingQty":"0","borrowAmount":"0.000000000000000000","totalPositionIM":"14.8806656","walletBalance":"1912.63494416","cumRealisedPnl":"-87.36505584","locked":"0","marginCollateral":true,"coin":"USDT"}]}]},"retExtInfo":{},"time":1742029743933}
+
+📊 **Strategy Performance Report** 📊
+Current Account Balance: 1912.63494416
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+Error processing WebSocket message: list index out of range
+          Total_Trades  Win_Rate  Total_PnL  Avg_PnL
+Strategy                                            
+hft                  1       0.0          0      0.0

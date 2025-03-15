@@ -1,62 +1,84 @@
 # analysis/market_insights/market_insights.py
 import numpy as np
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.FileHandler('trading_bot.log', encoding='utf-8'), logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
 class MarketInsights:
     def __init__(self, client, symbols, timeframe='1m'):
         self.client = client
-        self.symbols = symbols
+        self.symbols = symbols if isinstance(symbols, list) else [symbols]
         self.timeframe = timeframe
-        print(f"MarketInsights initialized for symbols: {self.symbols} with timeframe: {self.timeframe}")
-
-    def analyze_market(self):
-        print("Analyzing market data...")
+        logger.info(f"MarketInsights initialized for symbols: {self.symbols} with timeframe: {self.timeframe}")
 
     def get_imbalance_ratio(self):
-        """
-        Calculates bid-ask imbalance.
-        """
-        book = self.client.get_order_book(self.symbols[0])
-        if not book:
-            return None
+        try:
+            book = self.client.get_order_book(self.symbols[0])
+            if not book or 'bids' not in book or 'asks' not in book:
+                logger.warning("No valid order book data")
+                return 0.0
+            top_bids = sum(float(x[1]) for x in book["bids"][:5])
+            top_asks = sum(float(x[1]) for x in book["asks"][:5])
+            total = top_bids + top_asks
+            return (top_bids - top_asks) / total if total > 0 else 0.0
+        except Exception as e:
+            logger.error(f"Imbalance ratio calculation failed: {str(e)}")
+            return 0.0
 
-        top_bids = sum([float(x[1]) for x in book["bids"][:5]])
-        top_asks = sum([float(x[1]) for x in book["asks"][:5]])
+    def detect_iceberg_orders(self, trades=None):
+        try:
+            if trades is None:
+                trades = self.client.get_recent_trades(self.symbols[0], limit=100)
+            if not trades:
+                logger.warning("No trades available for iceberg detection")
+                return []
+            large_trades = [trade for trade in trades if float(trade.get("size", 0)) > 10]
+            if len(large_trades) > 5:
+                logger.info("Potential iceberg order detected!")
+                return [float(trade["price"]) for trade in large_trades[:5]]
+            return []
+        except Exception as e:
+            logger.error(f"Iceberg detection failed: {str(e)}")
+            return []
 
-        imbalance_ratio = (top_bids - top_asks) / (top_bids + top_asks)
-        return imbalance_ratio
+    def analyze_aggression(self, trades=None):
+        try:
+            if trades is None:
+                trades = self.client.get_recent_trades(self.symbols[0], limit=100)
+            if not trades:
+                logger.warning("No trades available for aggression analysis")
+                return 0.0
+            buy_vol = sum(float(t.get("size", 0)) for t in trades if t.get("side") == "Buy")
+            sell_vol = sum(float(t.get("size", 0)) for t in trades if t.get("side") == "Sell")
+            total_vol = buy_vol + sell_vol
+            return buy_vol / total_vol if total_vol > 0 else 0.0
+        except Exception as e:
+            logger.error(f"Aggression analysis failed: {str(e)}")
+            return 0.0
 
-    def detect_iceberg_orders(self):
-        """
-        Identifies iceberg orders (hidden liquidity).
-        """
-        trades = self.client.get_recent_trades(self.symbols[0])
-        large_trades = [trade for trade in trades if float(trade["size"]) > 10]  # Arbitrary threshold
-
-        if len(large_trades) > 5:
-            print("🚨 Potential iceberg order detected!")
-
-    def analyze_aggression(self):
-        """
-        Measures aggressive buying/selling.
-        """
-        trades = self.client.get_recent_trades(self.symbols[0])
-        buy_vol = sum(float(t["size"]) for t in trades if t["side"] == "Buy")  # Capitalized "Buy"
-        sell_vol = sum(float(t["size"]) for t in trades if t["side"] == "Sell")  # Capitalized "Sell"
-
-        aggression_ratio = buy_vol / (buy_vol + sell_vol) if (buy_vol + sell_vol) > 0 else 0
-        return aggression_ratio
-
-    def run(self):
-        """
-        Runs market analysis.
-        """
-        imbalance = self.get_imbalance_ratio()
-        aggression = self.analyze_aggression()
-        self.detect_iceberg_orders()
-
-        print(f"📊 **Market Insights ({self.timeframe}):**")
-        print(f"🔹 Order Book Imbalance: {imbalance:.4f}")
-        print(f"🔹 Order Flow Aggression: {aggression:.4f}")
+    def run(self, trades=None):
+        try:
+            imbalance = self.get_imbalance_ratio()
+            aggression = self.analyze_aggression(trades)
+            icebergs = self.detect_iceberg_orders(trades)
+            logger.info(f"Market Insights ({self.timeframe}):")
+            logger.info(f"Order Book Imbalance: {imbalance:.4f}")
+            logger.info(f"Order Flow Aggression: {aggression:.4f}")
+            if icebergs:
+                logger.info(f"Detected Iceberg Orders at: {icebergs}")
+            return {
+                "imbalance": imbalance,
+                "aggression": aggression,
+                "icebergs": icebergs
+            }
+        except Exception as e:
+            logger.error(f"Market insights run failed: {str(e)}")
+            return {"imbalance": 0.0, "aggression": 0.0, "icebergs": []}
 
 if __name__ == "__main__":
     from bybit_client import BybitClient

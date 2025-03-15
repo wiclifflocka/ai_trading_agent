@@ -1,0 +1,6 @@
+Self-Learning Performance Report
+Total Trades: 1
+Wins: 1
+Losses: 0
+Win Rate: 100.00%
+Epsilon (Exploration Rate): 1.0000

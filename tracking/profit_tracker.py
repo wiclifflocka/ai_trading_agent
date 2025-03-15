@@ -7,15 +7,15 @@ Tracks and reports profit & loss (P&L) for trading activities.
 
 import time
 import pandas as pd
-from data_pipeline.bybit_api import BybitAPI
+from bybit_client import BybitClient  # Updated import to match your current project structure
 
 class ProfitTracker:
-    def __init__(self, api: BybitAPI, symbol: str = "BTCUSDT"):
+    def __init__(self, api: BybitClient, symbol: str = "BTCUSDT"):
         """
         Tracks and reports profit & loss (P&L).
 
         Args:
-            api (BybitAPI): An instance of BybitAPI for fetching trading data.
+            api (BybitClient): An instance of BybitClient for fetching trading data.
             symbol (str): Trading pair (default: "BTCUSDT").
         """
         self.api = api
@@ -30,18 +30,17 @@ class ProfitTracker:
             float or None: Unrealized P&L if position exists, None otherwise.
         """
         try:
-            positions = self.api.get_open_positions(self.symbol)
+            positions = self.api.get_positions(self.symbol)  # Changed from get_open_positions
             if not positions:
                 return None
 
             # Assuming the first position is the relevant one (adjust if multiple positions possible)
             position = positions[0]
-            if "entry_price" not in position:
+            if "avgPrice" not in position:  # Updated key to match BybitClient.get_positions response
                 return None
 
-            entry_price = float(position["entry_price"])
-            # Use get_btc_price for BTCUSDT; adjust for other symbols if needed
-            mark_price = float(self.api.get_btc_price()) if self.symbol == "BTCUSDT" else None
+            entry_price = float(position["avgPrice"])
+            mark_price = float(self.api.get_current_price(self.symbol))  # Updated to use get_current_price
             if mark_price is None:
                 return None
 
@@ -106,6 +105,6 @@ if __name__ == "__main__":
     # Example usage with credentials
     API_KEY = "your_api_key_here"  # Replace with actual key
     API_SECRET = "your_api_secret_here"  # Replace with actual secret
-    api = BybitAPI(API_KEY, API_SECRET, testnet=True)
+    api = BybitClient(API_KEY, API_SECRET, testnet=True)  # Updated to use BybitClient
     tracker = ProfitTracker(api)
     tracker.run()
