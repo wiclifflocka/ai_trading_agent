@@ -3,4 +3,7 @@ requests
 websocket-client
 tensorflow
 pandas
+pybit
+python-dotenv
+ccxt
 
